@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_macros.html" import active_badge with context %}
+{% block title %}{{ customer.name }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h1 class="page-title mb-1">{{ customer.name }}</h1>
+    <span class="text-secondary">{{ customer.customer_code }}</span> {{ active_badge(customer.is_active) }}
+    <span class="badge text-bg-secondary">{{ customer.customer_type.title() }}</span>
+  </div>
+  <div class="d-flex gap-2">
+    {% if current_user.has_permission('generator.create') and customer.is_active %}
+    <a class="btn btn-accent" href="{{ url_for('generators.create', customer_id=customer.id) }}"><i class="bi bi-plus-lg"></i> Add generator</a>{% endif %}
+    {% if current_user.has_permission('customer.edit') %}
+    <a class="btn btn-outline-dark" href="{{ url_for('customers.edit', customer_id=customer.id) }}">Edit</a>
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('customers.delete', customer_id=customer.id) }}" data-title="Permanently delete customer"
+      data-message="{{ customer.name }} can only be deleted if it has no generators or service history." data-button="Delete permanently">Delete</button>
+    {% if customer.is_active %}
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('customers.deactivate', customer_id=customer.id) }}" data-title="Deactivate customer"
+      data-message="{{ customer.name }} will be hidden from new registrations. Their generators and history are kept." data-button="Deactivate">Deactivate</button>
+    {% else %}
+    <button class="btn btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('customers.activate', customer_id=customer.id) }}" data-title="Reactivate customer"
+      data-message="{{ customer.name }} will be active again." data-button="Reactivate">Reactivate</button>
+    {% endif %}{% endif %}
+    {% if current_user.has_permission('role.manage') %}
+    <button class="btn btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('customers.urgent_delete', customer_id=customer.id) }}" data-title="Urgently delete customer and history"
+      data-message="This urgently removes {{ customer.name }}, its generators, and linked operational history without considering generator or customer history. Customer deposits, protected financial history, and inventory history block deletion. Audit records are retained."
+      data-confirm-text="{{ customer.customer_code }}" data-button="Urgently delete">Urgent delete</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="panel h-100">
+      <h2 class="fs-5 mb-3">Contact details</h2>
+      <dl class="detail-grid">
+        <dt>Contact person</dt><dd>{{ customer.contact_person or '\u2014' }}</dd>
+        <dt>Primary phone</dt><dd>{{ customer.phone_primary }}</dd>
+        <dt>Alternate phone</dt><dd>{{ customer.phone_alt or '\u2014' }}</dd>
+        <dt>Email</dt><dd>{{ customer.email or '\u2014' }}</dd>
+        <dt>Address</dt><dd>{{ customer.address or '\u2014' }}</dd>
+        <dt>City / State</dt><dd>{{ customer.city or '\u2014' }}{% if customer.state %}, {{ customer.state }}{% endif %}</dd>
+        <dt>Registered</dt><dd>{{ customer.created_at|dt }}{% if customer.created_by %} by {{ customer.created_by.full_name }}{% endif %}</dd>
+        <dt>Notes</dt><dd>{{ customer.notes or '\u2014' }}</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="panel p-0 mb-3">
+      <h2 class="fs-5 p-3 pb-0">Generators ({{ customer.generators|length }})</h2>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead><tr><th>ID</th><th>Generator</th><th>Serial</th><th>Condition</th><th>Next maintenance</th></tr></thead>
+          <tbody>
+          {% for g in customer.generators %}
+            <tr>
+              <td><a href="{{ url_for('generators.detail', generator_id=g.id) }}">{{ g.generator_code }}</a></td>
+              <td>{{ g.title }}{% if not g.is_active %} <span class="badge text-bg-danger">Inactive</span>{% endif %}</td>
+              <td>{{ g.serial_number }}</td>
+              <td>{{ g.condition.replace('_', ' ').title() }}</td>
+              <td>{{ g.next_maintenance_date|dt('%d %b %Y') }}{% if g.maintenance_overdue %} <span class="badge text-bg-warning">Overdue</span>{% endif %}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="text-secondary text-center py-3">No generators registered yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="fs-5 mb-0">Service history</h2>
+        {% if current_user.has_permission('service.create') and customer.is_active %}<a class="btn btn-sm btn-accent" href="{{ url_for('services.create', customer_id=customer.id) }}">New service request</a>{% endif %}
+      </div>
+      {% with show_generator = true %}{% include "services/_history.html" %}{% endwith %}
+    </div>
+  </div>
+</div>
+{% endblock %}

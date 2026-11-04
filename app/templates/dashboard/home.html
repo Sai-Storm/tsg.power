@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="page-title mb-1">Welcome, {{ current_user.full_name.split(' ')[0] }}</h1>
+    <p class="text-secondary mb-0">Live operational overview</p>
+  </div>
+  <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+    <label class="form-label mb-0 small">From<input class="form-control form-control-sm" type="date" name="from" value="{{ start.isoformat() if start else '' }}"></label>
+    <label class="form-label mb-0 small">To<input class="form-control form-control-sm" type="date" name="to" value="{{ end.isoformat() if end else '' }}"></label>
+    <label class="form-label mb-0 small">Job status
+      <select class="form-select form-select-sm" name="status">
+        <option value="">All statuses</option>
+        {% for code,label in statuses.items() %}<option value="{{ code }}" {{ 'selected' if selected_status == code }}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('dashboard.home') }}">Reset</a>
+  </form>
+</div>
+<section class="row g-3 mb-4" aria-label="Live metrics">
+  {% for card in cards %}
+  <div class="col-6 col-xl-3">
+    <a class="panel d-block h-100 text-decoration-none text-reset" href="{{ card.href }}">
+      <div class="small text-secondary">{{ card.label }}</div>
+      <div class="display-6 fw-semibold">{% if card.amount is defined %}{{ card.amount|money }}{% elif card.label == 'Revenue in period' %}{{ card.value|money }}{% else %}{{ card.value }}{% endif %}</div>
+      {% if card.amount is defined %}<div class="small text-secondary">{{ card.value }} outstanding invoices</div>{% endif %}
+    </a>
+  </div>
+  {% endfor %}
+</section>
+{% if current_user.has_permission('report.view') %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.index') }}">Reports</a>
+  {% if current_user.is_admin and current_user.has_permission('audit.view') %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.audit_log') }}">Audit log</a>{% endif %}
+</div>
+{% endif %}
+<div class="row g-3">
+  <div class="col-xl-6"><section class="panel h-100"><h2 class="h5">Monthly service trends</h2><canvas id="serviceChart" aria-label="Services created by month"></canvas></section></div>
+  {% if current_user.has_permission('invoice.view') %}<div class="col-xl-6"><section class="panel h-100"><h2 class="h5">Revenue by month</h2><canvas id="revenueChart" aria-label="Revenue by month"></canvas></section></div>{% endif %}
+  <div class="col-xl-6"><section class="panel h-100"><h2 class="h5">Jobs by status</h2><canvas id="statusChart" aria-label="Jobs by service status"></canvas></section></div>
+  {% if current_user.has_permission('service.view_all') %}<div class="col-xl-6"><section class="panel h-100"><h2 class="h5">Technician workload</h2><canvas id="workloadChart" aria-label="Open jobs per technician"></canvas></section>{% endif %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+  const chartData = {{ charts|tojson }};
+  const makeChart = (id, type, labels, values, label) => {
+    const canvas = document.getElementById(id);
+    if (canvas) new Chart(canvas, {type, data: {labels, datasets: [{label, data: values, backgroundColor: '#e0a21b', borderColor: '#b77908', borderWidth: 2, tension: .25}]}, options: {responsive: true, maintainAspectRatio: true}});
+  };
+  makeChart('serviceChart', 'line', chartData.months, chartData.service_counts, 'Jobs created');
+  makeChart('revenueChart', 'bar', chartData.months, chartData.revenues, 'Revenue');
+  makeChart('statusChart', 'bar', chartData.status_labels, chartData.status_counts, 'Jobs');
+  makeChart('workloadChart', 'bar', chartData.workload_labels, chartData.workload_counts, 'Open jobs');
+</script>
+{% endblock %}

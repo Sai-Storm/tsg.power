@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}{{ 'Edit customer' if editing else 'Register customer' }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Edit ' ~ customer.name if editing else 'Register customer' }}</h1>
+
+{% if duplicates %}
+<div class="panel dup-card mb-3" role="alert">
+  <h2 class="fs-5">This customer may already exist</h2>
+  <p class="text-secondary mb-2">Check these records before saving. Open one in a new tab to compare.</p>
+  <ul class="list-unstyled mb-3">
+    {% for m in duplicates %}
+    <li class="mb-2">
+      <a href="{{ url_for('customers.detail', customer_id=m.customer.id) }}" target="_blank" rel="noopener"><strong>{{ m.customer.customer_code }}</strong> {{ m.customer.name }}</a>
+      <span class="text-secondary">&middot; {{ m.customer.phone_primary }}{% if m.customer.city %} &middot; {{ m.customer.city }}{% endif %}</span>
+      <div class="small">{% for r in m.reasons %}<span class="badge text-bg-warning me-1">{{ r }}</span>{% endfor %}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="mb-0 small">If this is a different customer, use <strong>{{ 'Save anyway' if editing else 'Register anyway' }}</strong> below. The override is recorded in the audit log.</p>
+</div>
+{% endif %}
+
+<div class="panel" style="max-width:860px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="row">
+      <div class="col-md-8">{{ field(form.name) }}</div>
+      <div class="col-md-4">{{ field(form.customer_type) }}</div>
+      <div class="col-md-6">{{ field(form.contact_person, "For business customers: who to call on site.") }}</div>
+      <div class="col-md-6">{{ field(form.email) }}</div>
+      <div class="col-md-6">{{ field(form.phone_primary) }}</div>
+      <div class="col-md-6">{{ field(form.phone_alt) }}</div>
+      <div class="col-12">{{ field(form.address) }}</div>
+      <div class="col-md-6">{{ field(form.city) }}</div>
+      <div class="col-md-6">{{ field(form.state) }}</div>
+      <div class="col-12">{{ field(form.notes) }}</div>
+    </div>
+    <button class="btn btn-accent" type="submit">{{ 'Save changes' if editing else 'Register customer' }}</button>
+    {% if duplicates %}<button class="btn btn-outline-dark" type="submit" name="confirm_duplicate" value="1">{{ 'Save anyway' if editing else 'Register anyway' }}</button>{% endif %}
+    <a class="btn btn-light" href="{{ url_for('customers.detail', customer_id=customer.id) if editing else url_for('customers.list_customers') }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

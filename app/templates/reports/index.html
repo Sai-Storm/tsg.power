@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+  <div><h1 class="page-title">Reports</h1><p class="text-secondary">Operational data calculated from current records.</p></div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('dashboard.home') }}">Dashboard</a>
+</div>
+<form method="get" class="panel row g-2 align-items-end mb-3">
+  <div class="col-md-4"><label class="form-label">Report
+    <select class="form-select" name="type">
+      <option value="">Choose a report</option>
+      {% for key,label in reports.items() %}{% if key != 'financial' or current_user.has_permission('finance.manage') %}<option value="{{ key }}" {{ 'selected' if kind == key }}>{{ label }}</option>{% endif %}{% endfor %}
+    </select>
+  </label></div>
+  <div class="col-md-3"><label class="form-label">From<input class="form-control" type="date" name="from" value="{{ start.isoformat() if start else '' }}"></label></div>
+  <div class="col-md-3"><label class="form-label">To<input class="form-control" type="date" name="to" value="{{ end.isoformat() if end else '' }}"></label></div>
+  <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">View</button></div>
+</form>
+{% if kind %}
+{% if financial_totals %}
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="panel"><div class="small text-secondary">Income received</div><div class="fs-4 fw-semibold">{{ financial_totals.income|money }}</div></div></div>
+  <div class="col-md-4"><div class="panel"><div class="small text-secondary">Approved expenses</div><div class="fs-4 fw-semibold">{{ financial_totals.expense|money }}</div></div></div>
+  <div class="col-md-4"><div class="panel"><div class="small text-secondary">Net income</div><div class="fs-4 fw-semibold">{{ financial_totals.net|money }}</div></div></div>
+</div>
+{% endif %}
+<div class="d-flex gap-2 mb-3">
+  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.export', kind=kind, fmt='csv', **{'from': start.isoformat() if start else '', 'to': end.isoformat() if end else ''}) }}">Export CSV</a>
+  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.export', kind=kind, fmt='pdf', **{'from': start.isoformat() if start else '', 'to': end.isoformat() if end else ''}) }}">Export PDF</a>
+</div>
+<div class="panel table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+  <thead><tr>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for row in rows %}<tr>{% for value in row %}{% set header = headers[loop.index0] %}<td>{{ value|money if value is number and header in ('Total','Paid','Balance','Income','Expense') else value }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="{{ headers|length }}">No matching records.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% endblock %}

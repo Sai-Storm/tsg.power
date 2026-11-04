@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}{{ 'Edit staff' if editing else 'Add staff' }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Edit ' ~ user.full_name if editing else 'Add staff account' }}</h1>
+<div class="panel" style="max-width:720px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="row">
+      <div class="col-md-6">{{ field(form.full_name) }}</div>
+      <div class="col-md-6">{{ field(form.email) }}</div>
+      <div class="col-md-6">{{ field(form.phone) }}</div>
+      <div class="col-md-6">
+        {% if form.role_id %}{{ field(form.role_id) }}
+        {% else %}<div class="mb-3"><label class="form-label">Role</label>
+          <input class="form-control" value="{{ user.role.name.title() }}" disabled>
+          <div class="form-text">You cannot change your own role.</div></div>{% endif %}
+      </div>
+      <div class="col-md-6">{{ field(form.specialization) }}</div>
+      <div class="col-md-6">{{ field(form.availability) }}</div>
+      <div class="col-md-6">{{ field(form.password, "Leave blank to keep the current password." if editing else "At least 10 characters with upper case, lower case and a digit.") }}</div>
+      <div class="col-md-6">{{ field(form.confirm_password) }}</div>
+    </div>
+    <button class="btn btn-accent" type="submit">{{ 'Save changes' if editing else 'Create account' }}</button>
+    <a class="btn btn-light" href="{{ url_for('staff.list_staff') }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links with context %}
+{% block title %}Stock ledger{% endblock %}
+{% block content %}
+<h1 class="page-title">Stock ledger</h1>
+<p class="text-secondary">Every stock movement, newest first. Entries cannot be edited or deleted.</p>
+<form class="panel row g-2 mb-3" method="get">
+  <div class="col-6 col-md-3"><select class="form-select" name="type" aria-label="Type"><option value="">All types</option>{% for k, v in txn_labels.items() %}<option value="{{ k }}" {{ 'selected' if f.get('type') == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-3"><input class="form-control" type="date" name="from" value="{{ f.get('from', '') }}" aria-label="From"></div>
+  <div class="col-6 col-md-3"><input class="form-control" type="date" name="to" value="{{ f.get('to', '') }}" aria-label="To"></div>
+  <div class="col-6 col-md-3 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div>
+</form>
+<div class="panel p-0"><div class="table-responsive"><table class="table table-sm align-middle mb-0">
+  <thead><tr><th>When</th><th>Item</th><th>Type</th><th>Change</th><th>Balance</th><th>Job / reference</th><th>Reason</th><th>By</th></tr></thead><tbody>
+  {% for t in pagination.items %}<tr><td class="text-nowrap">{{ t.created_at|dt }}</td>
+    <td><a href="{{ url_for('inventory.detail', item_id=t.item.id) }}">{{ t.item.part_code }}</a> {{ t.item.name }}</td><td>{{ txn_labels[t.txn_type] }}</td>
+    <td class="fw-semibold {{ 'text-danger' if t.quantity_delta < 0 else 'text-success' }}">{{ '+' if t.quantity_delta > 0 }}{{ t.quantity_delta|qty }}</td><td>{{ t.balance_after|qty }}</td>
+    <td>{% if t.service %}<a href="{{ url_for('services.detail', service_pk=t.service.id) }}">{{ t.service.service_id }}</a>{% else %}{{ t.reference or '\u2014' }}{% endif %}</td>
+    <td>{{ t.reason or '\u2014' }}</td><td>{{ t.performed_by.full_name }}</td></tr>
+  {% else %}<tr><td colspan="8" class="text-center text-secondary py-4">No movements match.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="d-flex justify-content-between p-3"><span class="small text-secondary">{{ pagination.total }} movements</span>{{ page_links(pagination, 'inventory.transactions') }}</div></div>
+{% endblock %}

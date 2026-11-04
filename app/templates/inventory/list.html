@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, sort_th, active_badge with context %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="page-title mb-0">Inventory</h1>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-dark" href="{{ url_for('inventory.waiting') }}">Jobs waiting for parts</a>
+    {% if current_user.has_permission('inventory.manage') %}
+    <a class="btn btn-outline-dark" href="{{ url_for('inventory.transactions') }}">Stock ledger</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('inventory.categories') }}">Categories</a>
+    <a class="btn btn-accent" href="{{ url_for('inventory.create') }}"><i class="bi bi-plus-lg"></i> Add item</a>{% endif %}
+  </div>
+</div>
+{% if low_count and current_user.has_permission('inventory.manage') %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center" role="alert">
+  <span><strong>{{ low_count }}</strong> item{{ '' if low_count == 1 else 's' }} at or below the minimum stock level.</span>
+  <a class="btn btn-sm btn-dark" href="{{ url_for('inventory.list_items', low=1) }}">Show low stock</a>
+</div>{% endif %}
+
+<form class="panel row g-2 mb-3" method="get">
+  <div class="col-12 col-md-4"><input class="form-control" name="q" value="{{ f.get('q', '') }}" placeholder="Name, part ID, SKU" aria-label="Search items"></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="category" aria-label="Category"><option value="">All categories</option>
+    {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if f.get('category') == (c.id|string) }}>{{ c.name }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="supplier" aria-label="Supplier"><option value="">All suppliers</option>
+    {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if f.get('supplier') == (s.id|string) }}>{{ s.name }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="status" aria-label="Status"><option value="">Any status</option>
+    <option value="active" {{ 'selected' if f.get('status') == 'active' }}>Active</option><option value="inactive" {{ 'selected' if f.get('status') == 'inactive' }}>Inactive</option></select></div>
+  <div class="col-6 col-md-1 d-flex align-items-center"><div class="form-check"><input class="form-check-input" type="checkbox" name="low" value="1" id="lowchk" {{ 'checked' if f.get('low') == '1' }}><label class="form-check-label" for="lowchk">Low</label></div></div>
+  <div class="col-12 col-md-1 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div>
+</form>
+
+<div class="panel p-0"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr>
+      {{ sort_th("Part ID", "code", sort, direction) }}{{ sort_th("Name", "name", sort, direction) }}<th>Category</th><th>Unit</th>
+      {{ sort_th("In stock", "stock", sort, direction) }}<th>Minimum</th>
+      {% if current_user.has_permission('inventory.manage') %}<th>Purchase</th>{% endif %}<th>Selling</th><th>Location</th><th>Status</th>
+      {% if current_user.has_permission('inventory.manage') %}<th class="text-end">Actions</th>{% endif %}
+    </tr></thead>
+    <tbody>
+    {% for i in pagination.items %}
+      <tr>
+        <td class="text-nowrap"><a href="{{ url_for('inventory.detail', item_id=i.id) }}">{{ i.part_code }}</a></td>
+        <td><div class="fw-semibold">{{ i.name }}</div>{% if i.sku %}<div class="small text-secondary">{{ i.sku }}</div>{% endif %}</td>
+        <td>{{ i.category.name if i.category else '\u2014' }}</td><td>{{ i.unit }}</td>
+        <td class="fw-semibold">{{ i.current_stock|qty }} {% if i.is_active and i.is_low %}<span class="badge text-bg-warning">{{ 'Out' if i.current_stock == 0 else 'Low' }}</span>{% endif %}</td>
+        <td>{{ i.min_stock|qty }}</td>
+        {% if current_user.has_permission('inventory.manage') %}<td>{{ i.purchase_price|money }}</td>{% endif %}
+        <td>{{ i.selling_price|money }}</td><td>{{ i.storage_location or '\u2014' }}</td><td>{{ active_badge(i.is_active) }}</td>
+        {% if current_user.has_permission('inventory.manage') %}
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+            data-action-url="{{ url_for('inventory.delete_item', item_id=i.id) }}" data-title="Permanently delete inventory item"
+            data-message="{{ i.name }} can only be deleted if it has no stock, transaction, or service requirement history." data-button="Delete permanently">Delete</button>
+        </td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ 11 if current_user.has_permission('inventory.manage') else 8 }}" class="text-center text-secondary py-4">No items match.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="d-flex justify-content-between align-items-center p-3"><span class="small text-secondary">{{ pagination.total }} item{{ '' if pagination.total == 1 else 's' }}</span>{{ page_links(pagination, 'inventory.list_items') }}</div></div>
+{% endblock %}

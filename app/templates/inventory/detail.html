@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, active_badge with context %}
+{% block title %}{{ item.part_code }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div><h1 class="page-title mb-1">{{ item.name }}</h1><span class="text-secondary">{{ item.part_code }}{% if item.sku %} &middot; {{ item.sku }}{% endif %}</span> {{ active_badge(item.is_active) }}</div>
+  {% if current_user.has_permission('inventory.manage') %}<div class="d-flex gap-2">
+    <a class="btn btn-outline-dark" href="{{ url_for('inventory.edit', item_id=item.id) }}">Edit</a>
+    {% if item.current_stock == 0 and txns.total == 0 %}
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('inventory.delete_item', item_id=item.id) }}" data-title="Permanently delete inventory item"
+      data-message="This permanently deletes {{ item.name }}. Items with stock or recorded history cannot be deleted." data-button="Delete permanently">Delete</button>
+    {% endif %}
+    {% if item.is_active %}<button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action-url="{{ url_for('inventory.deactivate', item_id=item.id) }}" data-title="Deactivate item" data-message="{{ item.name }} will no longer be requestable. Stock history is kept." data-button="Deactivate">Deactivate</button>
+    {% else %}<button class="btn btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action-url="{{ url_for('inventory.activate', item_id=item.id) }}" data-title="Reactivate item" data-message="{{ item.name }} will be requestable again." data-button="Reactivate">Reactivate</button>{% endif %}
+  </div>{% endif %}
+</div>
+<div class="row g-3">
+  <div class="col-lg-5"><div class="panel h-100">
+    <div class="display-6 fw-semibold">{{ item.current_stock|qty }} <span class="fs-5 text-secondary">{{ item.unit }}</span>
+      {% if item.is_active and item.is_low %}<span class="badge text-bg-warning fs-6 align-middle">{{ 'Out of stock' if item.current_stock == 0 else 'Low stock' }}</span>{% endif %}</div>
+    <dl class="detail-grid mt-3">
+      <dt>Minimum</dt><dd>{{ item.min_stock|qty }} {{ item.unit }}</dd>
+      <dt>Category</dt><dd>{{ item.category.name if item.category else '\u2014' }}</dd>
+      <dt>Supplier</dt><dd>{{ item.supplier.name if item.supplier else '\u2014' }}</dd>
+      <dt>Location</dt><dd>{{ item.storage_location or '\u2014' }}</dd>
+      {% if current_user.has_permission('inventory.manage') %}<dt>Purchase price</dt><dd>{{ item.purchase_price|money }}</dd>{% endif %}
+      <dt>Selling price</dt><dd>{{ item.selling_price|money }}</dd>
+      <dt>Description</dt><dd>{{ item.description or '\u2014' }}</dd>
+    </dl></div></div>
+  <div class="col-lg-7">
+    {% if item.is_active and current_user.has_permission('inventory.manage') %}
+    <div class="panel mb-3"><h2 class="fs-5 mb-3">Receive stock</h2>
+      <form method="post" action="{{ url_for('inventory.stock_in', item_id=item.id) }}" class="row g-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-6 col-md-3"><label class="form-label" for="qi">Quantity ({{ item.unit }})</label><input class="form-control" id="qi" name="quantity" inputmode="decimal" required></div>
+        <div class="col-6 col-md-3"><label class="form-label" for="ci">Unit cost</label><input class="form-control" id="ci" name="unit_cost" inputmode="decimal"></div>
+        <div class="col-12 col-md-4"><label class="form-label" for="ri">Supplier invoice / reference</label><input class="form-control" id="ri" name="reference" maxlength="100"></div>
+        <div class="col-12 col-md-2 d-grid"><button class="btn btn-accent" type="submit">Receive</button></div></form></div>{% endif %}
+    {% if current_user.has_permission('inventory.adjust') %}
+    <div class="panel mb-3"><h2 class="fs-5 mb-3">Adjust or correct stock</h2>
+      <form method="post" action="{{ url_for('inventory.adjust', item_id=item.id) }}" class="row g-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-6 col-md-3"><label class="form-label" for="ad">Change (+ / -)</label><input class="form-control" id="ad" name="delta" inputmode="decimal" placeholder="-2" required></div>
+        <div class="col-6 col-md-3"><label class="form-label" for="ak">Type</label><select class="form-select" id="ak" name="kind"><option value="adjustment">Stock-take adjustment</option><option value="correction">Correction</option></select></div>
+        <div class="col-12 col-md-4"><label class="form-label" for="ar">Reason (required)</label><input class="form-control" id="ar" name="reason" minlength="5" required></div>
+        <div class="col-12 col-md-2 d-grid"><button class="btn btn-outline-dark" type="submit">Apply</button></div></form></div>{% endif %}
+  </div>
+  <div class="col-12"><div class="panel p-0"><h2 class="fs-5 p-3 pb-0">Stock movements</h2><div class="table-responsive">
+    <table class="table table-sm align-middle mb-0"><thead><tr><th>When</th><th>Type</th><th>Change</th><th>Balance</th><th>Job / reference</th><th>Reason</th><th>By</th></tr></thead><tbody>
+    {% for t in txns.items %}<tr><td class="text-nowrap">{{ t.created_at|dt }}</td><td>{{ txn_labels[t.txn_type] }}</td>
+      <td class="fw-semibold {{ 'text-danger' if t.quantity_delta < 0 else 'text-success' }}">{{ '+' if t.quantity_delta > 0 }}{{ t.quantity_delta|qty }}</td><td>{{ t.balance_after|qty }}</td>
+      <td>{% if t.service %}<a href="{{ url_for('services.detail', service_pk=t.service.id) }}">{{ t.service.service_id }}</a>{% else %}{{ t.reference or '\u2014' }}{% endif %}</td>
+      <td>{{ t.reason or '\u2014' }}</td><td>{{ t.performed_by.full_name }}</td></tr>
+    {% else %}<tr><td colspan="7" class="text-center text-secondary py-3">No movements yet.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="p-3">{{ page_links(txns, 'inventory.detail') }}</div></div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Notifications</h1>
+    <p class="text-muted mb-0">{{ unread_count }} unread</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    {% if unread_count %}
+    <form method="post" action="{{ url_for('notifications.read_all') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-secondary" type="submit">Mark all read</button>
+    </form>
+    {% endif %}
+    {% if read_count %}
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('notifications.delete_read') }}" data-title="Delete all read notifications"
+      data-message="All of your read notifications will be permanently deleted. Unread notifications will remain."
+      data-button="Delete read notifications">Delete all read</button>
+    {% endif %}
+  </div>
+</div>
+<div class="list-group">
+  {% for item in notifications %}
+  <div class="list-group-item {{ 'bg-body-tertiary' if item.is_read }}">
+    <div class="d-flex justify-content-between gap-3">
+      <div>
+        <div class="fw-semibold">{{ item.title }}</div>
+        <div>{{ item.message }}</div>
+        <small class="text-muted">{{ item.created_at|dt }}</small>
+      </div>
+      {% if not item.is_read %}
+      <form method="post" action="{{ url_for('notifications.read', notification_id=item.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-primary" type="submit">Mark read</button>
+      </form>
+      {% endif %}
+      <button class="btn btn-sm btn-outline-danger" type="button" aria-label="Delete notification"
+        data-bs-toggle="modal" data-bs-target="#confirmModal" data-action-url="{{ url_for('notifications.delete', notification_id=item.id) }}"
+        data-title="Delete notification" data-message="{{ item.title }} will be permanently deleted."
+        data-button="Delete permanently">Delete</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="list-group-item text-muted">You have no notifications.</div>
+  {% endfor %}
+</div>
+{% endblock %}

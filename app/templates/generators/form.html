@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}{{ 'Edit generator' if editing else 'Register generator' }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Edit ' ~ generator.generator_code if editing else 'Register generator' }}</h1>
+<p class="text-secondary">Owner: <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.customer_code }} {{ customer.name }}</a></p>
+<div class="panel" style="max-width:860px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {% if not editing %}<input type="hidden" name="customer_id" value="{{ customer.id }}">{% endif %}
+    <div class="row">
+      <div class="col-md-4">
+        <div class="mb-3">
+          {{ form.brand.label(class="form-label") }}
+          {{ form.brand(class="form-control" ~ (" is-invalid" if form.brand.errors else ""), list="brand-list") }}
+          {% for e in form.brand.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+          <datalist id="brand-list">{% for b in ['Cummins','Kirloskar','Mahindra Powerol','Caterpillar','Perkins','Ashok Leyland','Greaves','Sudhir','Honda','Kohler','Generac','Volvo Penta'] %}<option value="{{ b }}">{% endfor %}</datalist>
+        </div>
+      </div>
+      <div class="col-md-4">{{ field(form.model) }}</div>
+      <div class="col-md-4">{{ field(form.serial_number, "As printed on the name plate. Unique per brand.") }}</div>
+      <div class="col-md-4">{{ field(form.capacity_kva) }}</div>
+      <div class="col-md-4">{{ field(form.fuel_type) }}</div>
+      <div class="col-md-4">{{ field(form.condition) }}</div>
+      <div class="col-md-6">{{ field(form.installation_date) }}</div>
+      <div class="col-md-6">{{ field(form.location) }}</div>
+      <div class="col-md-6">{{ field(form.warranty_start) }}</div>
+      <div class="col-md-6">{{ field(form.warranty_end) }}</div>
+      <div class="col-md-6">{{ field(form.last_service_date) }}</div>
+      <div class="col-md-6">{{ field(form.next_maintenance_date) }}</div>
+      <div class="col-12">{{ field(form.notes) }}</div>
+    </div>
+    <button class="btn btn-accent" type="submit">{{ 'Save changes' if editing else 'Register generator' }}</button>
+    <a class="btn btn-light" href="{{ url_for('generators.detail', generator_id=generator.id) if editing else url_for('customers.detail', customer_id=customer.id) }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start gap-2"><div><h1 class="page-title">Audit log</h1><p class="text-secondary">Administrative record of changes and actions.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('reports.index') }}">Reports</a></div>
+<form method="get" class="panel row g-2 align-items-end mb-3">
+  <div class="col-md-3"><label class="form-label">From<input class="form-control" type="date" name="from" value="{{ start.isoformat() if start else '' }}"></label></div>
+  <div class="col-md-3"><label class="form-label">To<input class="form-control" type="date" name="to" value="{{ end.isoformat() if end else '' }}"></label></div>
+  <div class="col-md-2"><label class="form-label">User<select class="form-select" name="user"><option value="">All users</option>{% for user in users %}<option value="{{ user.id }}" {{ 'selected' if selected_user == user.id }}>{{ user.full_name }}</option>{% endfor %}</select></label></div>
+  <div class="col-md-2"><label class="form-label">Action / entity / IP<input class="form-control" name="q" value="{{ q }}"></label></div>
+  <div class="col-md-2"><button class="btn btn-primary w-100">Filter</button></div>
+</form>
+<div class="panel table-responsive"><table class="table table-sm align-middle mb-0">
+  <thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th>Record</th><th>IP address</th><th>Changes</th></tr></thead>
+  <tbody>{% for row in pagination.items %}<tr><td>{{ row.created_at|dt }}</td><td>{{ row.user.full_name if row.user else 'System' }}</td><td>{{ row.action }}</td><td>{{ row.entity_type }}</td><td>{{ row.entity_id or '—' }}</td><td>{{ row.ip_address or '—' }}</td><td><details><summary>View</summary><pre class="small mb-0">{{ {'before': row.old_values, 'after': row.new_values}|tojson(indent=2) }}</pre></details></td></tr>{% else %}<tr><td colspan="7">No audit entries match these filters.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if pagination.pages > 1 %}<nav class="mt-3"><ul class="pagination">{% for page in pagination.iter_pages() %}{% if page %}<li class="page-item {{ 'active' if page == pagination.page }}"><a class="page-link" href="{{ url_for('reports.audit_log', page=page, **filters) }}">{{ page }}</a></li>{% else %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}{% endfor %}</ul></nav>{% endif %}
+{% endblock %}

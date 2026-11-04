@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}{{ 'Edit supplier' if editing else 'Add supplier' }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Edit supplier' if editing else 'Add supplier' }}</h1>
+<div class="panel" style="max-width:720px"><form method="post" novalidate>{{ form.hidden_tag() }}
+  <div class="row"><div class="col-md-6">{{ field(form.name) }}</div><div class="col-md-6">{{ field(form.contact_person) }}</div>
+    <div class="col-md-6">{{ field(form.phone) }}</div><div class="col-md-6">{{ field(form.email) }}</div>
+    <div class="col-12">{{ field(form.address) }}</div><div class="col-12">{{ field(form.notes) }}</div></div>
+  <button class="btn btn-accent" type="submit">{{ 'Save changes' if editing else 'Add supplier' }}</button> <a class="btn btn-light" href="{{ url_for('suppliers.list_suppliers') }}">Cancel</a>
+</form></div>
+{% endblock %}

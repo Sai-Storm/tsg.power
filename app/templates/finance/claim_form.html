@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Submit expense claim{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title mb-0">Submit expense claim</h1><a class="btn btn-outline-secondary" href="{{ url_for('finance.index') }}">Back to finance</a></div>
+<form method="post" class="panel row g-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="col-md-4"><label class="form-label">Expense date<input class="form-control" type="date" name="incurred_on" value="{{ request.form.get('incurred_on', today.isoformat()) }}" required></label></div>
+  <div class="col-md-4"><label class="form-label">Category<select class="form-select" name="category" required>{% for key, label in categories.items() %}<option value="{{ key }}" {{ 'selected' if request.form.get('category') == key }}>{{ label }}</option>{% endfor %}</select></label></div>
+  <div class="col-md-4"><label class="form-label">Amount<input class="form-control" type="number" name="amount" min="0.01" max="99999999.99" step="0.01" value="{{ request.form.get('amount', '') }}" required></label></div>
+  <div class="col-md-6"><label class="form-label">Description<input class="form-control" name="description" minlength="3" maxlength="500" value="{{ request.form.get('description', '') }}" required></label></div>
+  <div class="col-md-6"><label class="form-label">Receipt/reference<input class="form-control" name="receipt_reference" maxlength="120" value="{{ request.form.get('receipt_reference', '') }}"></label></div>
+  <div class="col-md-6"><label class="form-label">Related Job Order (optional)
+    <select class="form-select" name="service_request_id"><option value="">Not job-related</option>{% for job in jobs %}<option value="{{ job.id }}" {{ 'selected' if request.form.get('service_request_id') == job.id|string }}>{{ job.service_id }} — {{ job.customer.name }}</option>{% endfor %}</select>
+  </label></div>
+  <div class="col-md-6"><label class="form-label">Claim workflow
+    <select class="form-select" name="advance_id"><option value="">Personal expense reimbursement (no advance)</option>{% for advance in advances %}{% if balances[advance.id] > 0 %}<option value="{{ advance.id }}" {{ 'selected' if request.form.get('advance_id') == advance.id|string }}>{{ advance.advance_number }}{% if advance.service %} / {{ advance.service.service_id }}{% endif %} — {{ balances[advance.id]|money }} available</option>{% endif %}{% endfor %}</select>
+  </label><div class="form-text">Choose an advance to submit receipts and settle company money issued earlier. Leave it as “No advance” for personal spending that should be reimbursed.</div></div>
+  <div class="col-12"><button class="btn btn-primary" type="submit">Submit for approval</button></div>
+</form>
+{% endblock %}

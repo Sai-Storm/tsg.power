@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Choose customer{% endblock %}
+{% block content %}
+<h1 class="page-title">Register generator: choose the owner</h1>
+<form class="panel row g-2 mb-3" method="get" style="max-width:720px">
+  <div class="col-12 col-md-9"><input class="form-control" name="q" value="{{ q }}" placeholder="Customer name, ID or phone" aria-label="Find customer" autofocus></div>
+  <div class="col-12 col-md-3 d-grid"><button class="btn btn-dark" type="submit">Find customer</button></div>
+</form>
+{% if q %}
+<div class="panel p-0" style="max-width:720px">
+  <ul class="list-group list-group-flush">
+    {% for c in results %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <span><strong>{{ c.customer_code }}</strong> {{ c.name }} <span class="text-secondary">&middot; {{ c.phone_primary }}{% if c.city %} &middot; {{ c.city }}{% endif %}</span></span>
+      <a class="btn btn-sm btn-accent" href="{{ url_for('generators.create', customer_id=c.id) }}">Select</a>
+    </li>
+    {% else %}
+    <li class="list-group-item text-secondary">No active customer found.
+      {% if current_user.has_permission('customer.create') %}<a href="{{ url_for('customers.create') }}">Register the customer first.</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

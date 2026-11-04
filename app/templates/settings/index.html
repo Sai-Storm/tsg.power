@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}Company settings{% endblock %}
+{% block content %}
+<h1 class="page-title">Company settings</h1>
+<div class="row g-3">
+  <div class="col-lg-8"><div class="panel"><form method="post" novalidate>{{ form.hidden_tag() }}
+    <div class="row">
+      <div class="col-md-8">{{ field(form.company_name) }}</div><div class="col-md-4">{{ field(form.company_tax_id) }}</div>
+      <div class="col-12">{{ field(form.company_address) }}</div>
+      <div class="col-md-6">{{ field(form.company_phone) }}</div><div class="col-md-6">{{ field(form.company_email) }}</div>
+      <div class="col-md-3">{{ field(form.currency_code) }}</div><div class="col-md-3">{{ field(form.currency_symbol) }}</div>
+      <div class="col-md-3">{{ field(form.tax_name) }}</div><div class="col-md-3">{{ field(form.tax_rate) }}</div>
+      <div class="col-md-6">{{ field(form.labor_rate_per_hour, "Used for estimates and invoices.") }}</div><div class="col-md-6">{{ field(form.payment_terms_days) }}</div>
+      <div class="col-12">{{ field(form.invoice_footer) }}</div>
+    </div>
+    <button class="btn btn-accent" type="submit">Save settings</button></form></div></div>
+  <div class="col-lg-4"><div class="panel"><h2 class="fs-5">Logo for PDFs</h2>
+    {% if has_logo %}<img src="{{ url_for('settings.logo') }}" alt="Company logo" class="img-fluid mb-3" style="max-height:90px">{% else %}<p class="text-secondary">No logo uploaded yet.</p>{% endif %}
+    <form method="post" action="{{ url_for('settings.upload_logo') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label" for="lg">PNG or JPG, up to 2 MB</label><input class="form-control mb-2" id="lg" type="file" name="logo" accept=".png,.jpg,.jpeg" required><button class="btn btn-dark" type="submit">Upload logo</button></form>
+    <p class="small text-secondary mt-3 mb-0">PDFs use the configured currency marker (MMK defaults to "Ks") and cannot show non-Latin scripts.</p></div></div>
+</div>
+{% endblock %}

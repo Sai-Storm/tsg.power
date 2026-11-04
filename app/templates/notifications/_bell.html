@@ -1,0 +1,8 @@
+{% set notification_unread = nav_counts.get('unread_notifications', 0) %}
+<a class="btn btn-outline-secondary position-relative" href="{{ url_for('notifications.index') }}"
+   aria-label="Notifications{% if notification_unread %}, {{ notification_unread }} unread{% endif %}">
+  <i class="bi bi-bell" aria-hidden="true"></i>
+  {% if notification_unread %}
+  <span class="badge rounded-pill text-bg-danger">{{ notification_unread }}</span>
+  {% endif %}
+</a>

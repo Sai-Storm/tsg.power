@@ -1,0 +1,31 @@
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+  <h2 class="fs-5 mb-0">Estimates and billing</h2>
+  <div class="d-flex gap-2 d-print-none">
+    <a class="btn btn-sm btn-outline-dark" target="_blank" rel="noopener" href="{{ url_for('services.report_pdf', service_pk=s.id) }}"><i class="bi bi-file-earmark-pdf"></i> Service report PDF</a>
+    {% if can_new_estimate and not (s.estimates and s.estimates[-1].status == 'draft') %}<a class="btn btn-sm btn-dark" href="{{ url_for('estimates.create', service=s.id) }}">{{ 'Revised estimate' if s.estimates else 'New estimate' }}</a>{% endif %}
+  </div>
+</div>
+<div class="table-responsive"><table class="table table-sm align-middle mb-3"><thead><tr><th>Estimate</th><th>Status</th><th class="text-end">Total</th><th>Customer</th><th></th></tr></thead><tbody>
+  {% for e in s.estimates|reverse %}<tr><td>v{{ e.version }}</td><td><span class="badge text-bg-{{ ESTIMATE_BADGE[e.status] }}">{{ ESTIMATE_STATUSES[e.status] }}</span></td><td class="text-end">{{ e.total|money }}</td>
+    <td>{{ ('Approved' if e.customer_decision == 'approved' else 'Rejected') ~ ' by ' ~ e.customer_decided_by if e.customer_decision else '\u2014' }}</td>
+    <td><a href="{{ url_for('estimates.detail', est_id=e.id) }}">Open</a></td></tr>
+  {% else %}<tr><td colspan="5" class="text-secondary text-center">No estimate yet.</td></tr>{% endfor %}</tbody></table></div>
+{% if can_see_invoice and fin %}
+<div class="border rounded p-3">
+  {% if s.status in ('completed', 'closed') %}
+    {% if s.report_approved_at %}
+    <div class="alert alert-success py-2 mb-3">Service delivery report approved{% if s.report_approved_by %} by {{ s.report_approved_by.full_name }}{% endif %} on {{ s.report_approved_at|dt }}.{% if s.report_approval_note %} <span>{{ s.report_approval_note }}</span>{% endif %}</div>
+    {% else %}
+    <div class="alert alert-warning py-2 mb-3">Manager approval of the service delivery report is required before invoicing.
+      {% if can_approve_report %}<form method="post" action="{{ url_for('services.approve_report', service_pk=s.id) }}" class="d-inline-flex gap-1 ms-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" name="note" maxlength="500" placeholder="Optional approval note" aria-label="Approval note"><button class="btn btn-sm btn-warning" type="submit">Approve report</button></form>{% endif %}
+    </div>
+    {% endif %}
+  {% endif %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div><strong>Payment status: {{ fin.payment_status }}</strong>
+      {% if fin.invoice %}<div class="small text-secondary"><a href="{{ url_for('invoices.detail', invoice_id=fin.invoice.id) }}">{{ fin.invoice.display_number }}</a> &middot; total {{ fin.invoice.total|money }} &middot; paid {{ fin.paid|money }}{% if fin.invoice.status != 'draft' %} &middot; balance {{ fin.balance|money }}{% endif %}</div>
+      {% else %}<div class="small text-secondary">Completing a job does not mean it has been paid. Create an invoice to bill the customer.</div>{% endif %}</div>
+    {% if can_make_invoice and not fin.invoice %}
+    <form method="post" action="{{ url_for('invoices.create_from_service', service_pk=s.id) }}" class="d-print-none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-accent" type="submit">Create invoice from this job</button></form>{% endif %}
+  </div>
+</div>{% endif %}

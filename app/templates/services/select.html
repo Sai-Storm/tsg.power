@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}New service request{% endblock %}
+{% block content %}
+<h1 class="page-title">New service request</h1>
+{% if step == "customer" %}
+<p class="text-secondary">Step 1 of 3: find the customer by name, phone number or customer ID.</p>
+<form class="panel row g-2 mb-3" method="get" style="max-width:720px">
+  <div class="col-12 col-md-9"><input class="form-control" name="q" value="{{ q }}" placeholder="Customer name, ID or phone" aria-label="Find customer" autofocus></div>
+  <div class="col-12 col-md-3 d-grid"><button class="btn btn-dark" type="submit">Find customer</button></div>
+</form>
+{% if q %}
+<div class="panel p-0" style="max-width:720px"><ul class="list-group list-group-flush">
+  {% for c in results %}
+  <li class="list-group-item d-flex justify-content-between align-items-center">
+    <span><strong>{{ c.customer_code }}</strong> {{ c.name }} <span class="text-secondary">&middot; {{ c.phone_primary }}{% if c.city %} &middot; {{ c.city }}{% endif %}</span></span>
+    <a class="btn btn-sm btn-accent" href="{{ url_for('services.create', customer_id=c.id) }}">Select</a>
+  </li>
+  {% else %}
+  <li class="list-group-item text-secondary">No active customer found.
+    {% if current_user.has_permission('customer.create') %}<a href="{{ url_for('customers.create') }}">Register the customer first.</a>{% endif %}</li>
+  {% endfor %}
+</ul></div>
+{% endif %}
+{% else %}
+<p class="text-secondary">Step 2 of 3: which generator needs service for <strong>{{ customer.name }}</strong>?</p>
+<div class="panel p-0" style="max-width:720px"><ul class="list-group list-group-flush">
+  {% for g in generators %}
+  <li class="list-group-item d-flex justify-content-between align-items-center">
+    <span><strong>{{ g.generator_code }}</strong> {{ g.title }} <span class="text-secondary">&middot; S/N {{ g.serial_number }}</span></span>
+    <a class="btn btn-sm btn-accent" href="{{ url_for('services.create', generator_id=g.id) }}">Select</a>
+  </li>
+  {% else %}
+  <li class="list-group-item text-secondary">This customer has no active generators.
+    {% if current_user.has_permission('generator.create') %}<a href="{{ url_for('generators.create', customer_id=customer.id) }}">Register a generator.</a>{% endif %}</li>
+  {% endfor %}
+</ul></div>
+<a class="btn btn-light mt-3" href="{{ url_for('services.create') }}">Choose a different customer</a>
+{% endif %}
+{% endblock %}

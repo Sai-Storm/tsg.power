@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Possible duplicate customers{% endblock %}
+{% block content %}
+<h1 class="page-title">Possible duplicate customers</h1>
+<p class="text-secondary">Active customers that share a phone number or email. Open each record to compare. If one is a true duplicate, deactivate it; merging records is not available yet.</p>
+{% for g in groups %}
+<div class="panel mb-3">
+  <h2 class="fs-6 mb-2">Shared {{ g.label|lower }}: <span class="text-secondary">{{ g.key }}</span></h2>
+  <ul class="mb-0">
+    {% for c in g.customers %}
+    <li><a href="{{ url_for('customers.detail', customer_id=c.id) }}">{{ c.customer_code }}</a> {{ c.name }} <span class="text-secondary">&middot; {{ c.phone_primary }}{% if c.city %} &middot; {{ c.city }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+</div>
+{% else %}
+<div class="panel text-center text-secondary">No duplicates found. Customers share no phone numbers or emails.</div>
+{% endfor %}
+{% endblock %}

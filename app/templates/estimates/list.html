@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links with context %}
+{% block title %}Estimates{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title mb-0">Quotations</h1>
+  {% if can_create_quote %}<a class="btn btn-accent" href="{{ url_for('estimates.create') }}">New quotation</a>{% endif %}</div>
+<ul class="nav nav-tabs mb-3">
+  {% if not can_review_quotes and not can_create_quote %}
+  <li class="nav-item"><a class="nav-link active" href="{{ url_for('estimates.list_estimates') }}">Accepted - ready for Job Order</a></li>
+  {% else %}
+  {% for k, label in [('draft', 'Awaiting approval'), ('approved', 'Awaiting customer'), ('customer_approved', 'Customer approved'), ('rejected', 'Rejected'), ('', 'All')] %}
+  <li class="nav-item"><a class="nav-link {{ 'active' if status == k }}" href="{{ url_for('estimates.list_estimates', status=k) }}">{{ label }}</a></li>{% endfor %}
+  {% endif %}
+</ul>
+<div class="panel p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Quotation / Job</th><th>Customer</th><th>Version</th><th>Total</th><th>Status</th><th>Created by</th><th>Created</th><th class="text-end">Actions</th></tr></thead><tbody>
+  {% for e in pagination.items %}<tr>
+    <td><a href="{{ url_for('estimates.detail', est_id=e.id) }}">{{ e.quotation_number or e.service.service_id }}</a>
+      {% if e.service %}<div class="small text-secondary">Job {{ e.service.service_id }}</div>{% endif %}</td>
+    <td>{{ (e.customer or e.service.customer).name }}</td><td>v{{ e.version }}</td>
+    <td class="fw-semibold">{{ e.total|money }}</td><td><span class="badge text-bg-{{ ESTIMATE_BADGE[e.status] }}">{{ ESTIMATE_STATUSES[e.status] }}</span></td>
+    <td>{{ e.created_by.full_name }}</td><td>{{ e.created_at|dt }}</td><td class="text-end">
+      {% if e.status == 'draft' %}
+      <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+        data-action-url="{{ url_for('estimates.delete_draft', est_id=e.id) }}" data-title="Permanently delete draft estimate"
+        data-message="Only this draft estimate will be removed. Its deletion will be recorded on the service timeline and audit log."
+        data-button="Delete permanently">Delete draft</button>
+      {% endif %}
+    </td></tr>
+  {% else %}<tr><td colspan="8" class="text-center text-secondary py-4">No estimates here.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="d-flex justify-content-between p-3"><span class="small text-secondary">{{ pagination.total }} estimate{{ '' if pagination.total == 1 else 's' }}</span>{{ page_links(pagination, 'estimates.list_estimates') }}</div></div>
+{% endblock %}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} | {{ company_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+</head>
+<body>
+{% if current_user.is_authenticated %}
+<div class="app-shell">
+  <aside class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-brand">
+      <span class="brand-logo-frame"><img src="{{ url_for('static', filename='img/tsg-logo.png') }}" alt="" class="brand-logo"></span>
+      <span>{{ company_name }}</span>
+      <button type="button" class="btn-close btn-close-white d-lg-none ms-auto" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close menu"></button>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="{{ url_for('dashboard.home') }}" class="{{ 'active' if request.endpoint == 'dashboard.home' }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+      <a href="{{ url_for('reports.search') }}" class="{{ 'active' if request.endpoint == 'reports.search' }}"><i class="bi bi-search"></i> Global search</a>
+      {% if current_user.has_permission('report.view') %}
+      <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' and request.endpoint != 'reports.audit_log' }}"><i class="bi bi-file-earmark-bar-graph"></i> Reports</a>
+      {% endif %}
+      {% if current_user.is_admin and current_user.has_permission('audit.view') %}
+      <a href="{{ url_for('reports.audit_log') }}" class="{{ 'active' if request.endpoint == 'reports.audit_log' }}"><i class="bi bi-journal-text"></i> Audit log</a>
+      {% endif %}
+      {% if current_user.has_permission('service.view_all') or current_user.has_permission('service.view_assigned') %}
+      <a href="{{ url_for('services.list_services') }}" class="{{ 'active' if request.blueprint == 'services' }}"><i class="bi bi-wrench-adjustable"></i> Services</a>
+      {% endif %}
+      {% if current_user.has_permission('customer.view') %}
+      <a href="{{ url_for('customers.list_customers') }}" class="{{ 'active' if request.blueprint == 'customers' }}"><i class="bi bi-person-lines-fill"></i> Customers</a>
+      {% endif %}
+      {% if current_user.has_permission('generator.view') %}
+      <a href="{{ url_for('generators.list_generators') }}" class="{{ 'active' if request.blueprint == 'generators' }}"><i class="bi bi-lightning-charge"></i> Generators</a>
+      {% endif %}
+      {% if current_user.has_permission('inventory.view') %}
+      <a href="{{ url_for('inventory.list_items') }}" class="{{ 'active' if request.blueprint == 'inventory' and request.endpoint not in ('inventory.requests',) }}"><i class="bi bi-box-seam"></i> Inventory
+        {% if nav_counts.get('low_stock') %}<span class="badge text-bg-warning ms-auto" title="Low stock items">{{ nav_counts.low_stock }}</span>{% endif %}</a>
+      {% endif %}
+      {% if current_user.has_permission('requirement.approve') or current_user.has_permission('inventory.issue') %}
+      <a href="{{ url_for('inventory.requests') }}" class="{{ 'active' if request.endpoint == 'inventory.requests' }}"><i class="bi bi-clipboard-check"></i> Material requests
+        {% if nav_counts.get('pending_requests') %}<span class="badge text-bg-warning ms-auto">{{ nav_counts.pending_requests }}</span>{% endif %}</a>
+      {% endif %}
+      {% if current_user.has_permission('invoice.view') %}
+      <a href="{{ url_for('invoices.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoices' }}"><i class="bi bi-receipt"></i> Invoices
+        {% if nav_counts.get('outstanding') and nav_counts.outstanding.count %}<span class="badge text-bg-danger ms-auto" title="Unpaid invoices">{{ nav_counts.outstanding.count }}</span>{% endif %}</a>
+      {% endif %}
+      {% if current_user.has_permission('finance.claim') or current_user.has_permission('finance.manage') %}
+      <a href="{{ url_for('finance.index') }}" class="{{ 'active' if request.blueprint == 'finance' }}"><i class="bi bi-cash-stack"></i> Cash & claims</a>
+      {% endif %}
+      {% if current_user.has_permission('estimate.approve') or current_user.has_permission('estimate.create') or current_user.has_permission('service.create') %}
+      <a href="{{ url_for('estimates.list_estimates') }}" class="{{ 'active' if request.blueprint == 'estimates' }}"><i class="bi bi-calculator"></i> Quotations
+        {% if nav_counts.get('draft_estimates') %}<span class="badge text-bg-warning ms-auto">{{ nav_counts.draft_estimates }}</span>{% endif %}</a>
+      {% endif %}
+      {% if current_user.has_permission('inventory.manage') %}
+      <a href="{{ url_for('suppliers.list_suppliers') }}" class="{{ 'active' if request.blueprint == 'suppliers' }}"><i class="bi bi-truck"></i> Suppliers</a>
+      {% endif %}
+      {% if current_user.has_permission('staff.manage') %}
+      <a href="{{ url_for('staff.list_staff') }}" class="{{ 'active' if request.blueprint == 'staff' }}"><i class="bi bi-people"></i> Staff</a>
+      {% endif %}
+      {% if current_user.has_permission('settings.manage') %}
+      <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.blueprint == 'settings' }}"><i class="bi bi-gear"></i> Settings</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-user">
+      <div class="small text-white-50">Signed in as</div>
+      <div class="fw-semibold text-white">{{ current_user.full_name }}</div>
+      <div class="small text-white-50 mb-2">{{ current_user.role.name.title() }} &middot; {{ current_user.staff_code }}</div>
+      <a class="btn btn-sm btn-outline-light me-1" href="{{ url_for('auth.change_own_password') }}">Password</a>
+      <form method="post" action="{{ url_for('auth.logout') }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-light" type="submit">Sign out</button>
+      </form>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar d-lg-none">
+      <button class="btn btn-dark" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open menu"><i class="bi bi-list"></i></button>
+      <span class="brand-logo-frame brand-logo-frame-sm"><img src="{{ url_for('static', filename='img/tsg-logo.png') }}" alt="" class="brand-logo"></span>
+      <span class="fw-semibold">{{ company_name }}</span>
+    </header>
+    <main class="content">
+      <form class="global-search mb-3" action="{{ url_for('reports.search') }}" method="get" role="search">
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+          <input class="form-control" name="q" value="{{ request.args.get('q', '') if request.endpoint == 'reports.search' else '' }}" placeholder="Search Service ID, customer, phone, generator, staff or part" aria-label="Global search">
+          <button class="btn btn-outline-secondary" type="submit">Search</button>
+        </div>
+      </form>
+      {% include "_flashes.html" %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h2 class="modal-title fs-5 confirm-title">Confirm</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <div class="confirm-message"></div>
+        <div class="confirm-typed-wrap d-none mt-3">
+          <label class="form-label confirm-typed-label" for="confirmTypedInput"></label>
+          <input class="form-control confirm-typed-input" id="confirmTypedInput" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger confirm-submit">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+<main class="auth-wrap">
+  <div class="auth-card">
+    {% include "_flashes.html" %}
+    {% block auth %}{% endblock %}
+  </div>
+</main>
+{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

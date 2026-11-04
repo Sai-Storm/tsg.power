@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}{% block auth %}
+<h1 class="page-title">{{ title }}</h1>
+<p class="text-secondary">{{ message }}</p>
+<a class="btn btn-accent" href="{{ url_for('dashboard.home') }}">Back to dashboard</a>
+{% endblock %}{% endblock %}

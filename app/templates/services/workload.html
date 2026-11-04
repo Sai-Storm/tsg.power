@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge with context %}
+{% block title %}Staff workload{% endblock %}
+{% block content %}
+<h1 class="page-title">Staff workload</h1>
+<p class="text-secondary">Open jobs per technician, calculated live from current assignments.</p>
+<div class="panel p-0"><div class="table-responsive">
+  <table class="table align-middle mb-0">
+    <thead><tr><th>Technician</th><th>Availability</th><th>Open jobs</th><th>Overdue</th><th>By status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><div class="fw-semibold">{{ r.user.full_name }}</div><div class="small text-secondary">{{ r.user.staff_code }}{% if r.user.specialization %} &middot; {{ r.user.specialization }}{% endif %}</div></td>
+        <td>{{ r.user.availability.replace('_', ' ').title() }}</td>
+        <td class="fw-semibold">{{ r.open }}</td>
+        <td>{% if r.overdue %}<span class="badge text-bg-danger">{{ r.overdue }}</span>{% else %}0{% endif %}</td>
+        <td>{% for st, n in r.by_status.items() %}{{ status_badge(st) }} {{ n }}&nbsp; {% else %}<span class="text-secondary">No open jobs</span>{% endfor %}</td>
+        <td class="text-end text-nowrap">
+          <a class="btn btn-sm btn-outline-dark" href="{{ url_for('services.list_services', technician=r.user.id) }}">View jobs</a>
+          {% if current_user.has_permission('role.manage') and r.open > 0 %}
+          <button class="btn btn-sm btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+            data-action-url="{{ url_for('staff.urgent_clear_workload', user_id=r.user.id) }}" data-title="Urgently clear staff workload"
+            data-message="This urgently removes {{ r.user.full_name }} from all {{ r.open }} active open job(s) without considering generator or customer history. Audit records are retained."
+            data-confirm-text="{{ r.user.staff_code }}" data-button="Urgent clear workload">Urgent clear workload</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="text-center text-secondary py-4">No technician accounts yet. Add staff first.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

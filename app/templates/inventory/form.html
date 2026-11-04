@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}{{ 'Edit item' if editing else 'Add item' }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Edit ' ~ item.part_code if editing else 'Add stock item' }}</h1>
+<div class="panel" style="max-width:860px"><form method="post" novalidate>{{ form.hidden_tag() }}
+  <div class="row">
+    <div class="col-md-8">{{ field(form.name) }}</div><div class="col-md-4">{{ field(form.sku, "Optional; must be unique.") }}</div>
+    <div class="col-md-4">{{ field(form.category_id) }}</div>
+    <div class="col-md-4">{{ field(form.unit, "Unit cannot change once stock has moved.") if editing else field(form.unit, "Litre, kg, metre allow decimals; unit, set, pair, box, pack, roll are whole numbers.") }}</div>
+    <div class="col-md-4">{{ field(form.supplier_id) }}</div>
+    <div class="col-12">{{ field(form.description) }}</div>
+    {% if not editing %}<div class="col-md-4">{{ field(form.opening_stock, "Recorded in the stock ledger as opening stock.") }}</div>{% endif %}
+    <div class="col-md-4">{{ field(form.min_stock, "You are alerted at or below this level.") }}</div>
+    <div class="col-md-4">{{ field(form.storage_location) }}</div>
+    <div class="col-md-6">{{ field(form.purchase_price) }}</div><div class="col-md-6">{{ field(form.selling_price) }}</div>
+  </div>
+  <button class="btn btn-accent" type="submit">{{ 'Save changes' if editing else 'Add item' }}</button>
+  <a class="btn btn-light" href="{{ url_for('inventory.detail', item_id=item.id) if editing else url_for('inventory.list_items') }}">Cancel</a>
+</form></div>
+{% endblock %}

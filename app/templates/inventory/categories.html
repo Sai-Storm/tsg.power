@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<h1 class="page-title">Inventory categories</h1>
+<form method="post" class="panel row g-2 mb-3" style="max-width:560px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="col-9"><input class="form-control" name="name" placeholder="New category name" aria-label="Category name" required minlength="2" maxlength="60"></div>
+  <div class="col-3 d-grid"><button class="btn btn-accent" type="submit">Add</button></div></form>
+<div class="panel p-0" style="max-width:560px"><ul class="list-group list-group-flush">
+  {% for c in categories %}<li class="list-group-item d-flex justify-content-between align-items-center"><span>{{ c.name }} {% if not c.is_active %}<span class="badge text-bg-danger">Inactive</span>{% endif %}</span>
+    <div class="d-flex gap-2">
+      <form method="post" action="{{ url_for('inventory.toggle_category', category_id=c.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-dark" type="submit">{{ 'Deactivate' if c.is_active else 'Reactivate' }}</button></form>
+      <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+        data-action-url="{{ url_for('inventory.delete_category', category_id=c.id) }}" data-title="Permanently delete category"
+        data-message="{{ c.name }} will be permanently deleted if no inventory items use it." data-button="Delete permanently">Delete</button>
+    </div></li>{% endfor %}
+</ul></div>
+{% endblock %}

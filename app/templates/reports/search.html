@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Global search{% endblock %}
+{% block content %}
+<h1 class="page-title">Search</h1>
+{% if q and q|length < 2 %}<p class="text-secondary">Enter at least two characters to search.</p>
+{% elif not q %}<p class="text-secondary">Recent records are listed below. Search above to find a specific record.</p>
+{% else %}<p class="text-secondary">Select records below to export them or apply a bulk service-job action.</p>{% endif %}
+
+{% set has_results = results.services or results.customers or results.generators or results.staff or results.parts %}
+{% if has_results %}
+<form method="post" action="{{ url_for('reports.search_actions') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="q" value="{{ q }}">
+  {% for category, items in results.items() %}
+    {% if items %}
+    <section class="panel mb-3 p-0 overflow-hidden">
+      <h2 class="h5 text-capitalize p-3 mb-0 border-bottom">{{ category }} <span class="text-secondary small">({{ items|length }})</span></h2>
+      <div class="list-group list-group-flush">
+        {% for item in items %}
+        <label class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+          <input class="form-check-input flex-shrink-0 m-0" type="checkbox" name="selected"
+                 value="{{ item.type }}:{{ item.id }}" aria-label="Select {{ item.title }}">
+          <span class="flex-grow-1"><a class="text-decoration-none" href="{{ item.url }}"><strong>{{ item.title }}</strong>
+            <span class="text-secondary ms-2">{{ item.detail }}</span></a></span>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ item.url }}">Open</a>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  {% endfor %}
+
+  <section class="panel mb-3">
+    <h2 class="h5">Operate on selected records</h2>
+    <p class="small text-secondary">Export works with mixed record types. Status and assignment actions apply only to selected service jobs and are checked against each job's permissions and workflow rules.</p>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <div>
+        <label class="form-label small" for="bulk-action">Operation</label>
+        <select class="form-select" id="bulk-action" name="action" required>
+          <option value="export">Export selected records to CSV</option>
+          {% if current_user.has_permission('service.view_all') or current_user.has_permission('service.view_assigned') %}
+          <option value="status">Update selected service statuses</option>
+          {% endif %}
+          {% if current_user.has_permission('service.assign') %}
+          <option value="assign">Assign selected service jobs</option>
+          {% endif %}
+        </select>
+      </div>
+      {% if current_user.has_permission('service.view_all') or current_user.has_permission('service.view_assigned') %}
+      <div>
+        <label class="form-label small" for="bulk-status">New service status</label>
+        <select class="form-select" id="bulk-status" name="status">
+          {% for key, label in statuses.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label small" for="bulk-remarks">Remarks / reason</label>
+        <input class="form-control" id="bulk-remarks" name="remarks" maxlength="500">
+      </div>
+      {% endif %}
+      {% if current_user.has_permission('service.assign') %}
+      <div>
+        <label class="form-label small" for="bulk-technician">Add technician to selected open jobs</label>
+        <select class="form-select" id="bulk-technician" name="technician_id">
+          <option value="">Choose technician</option>
+          {% for technician in technicians %}<option value="{{ technician.id }}">{{ technician.full_name }} ({{ technician.staff_code }})</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <button class="btn btn-primary" type="submit">Apply operation</button>
+    </div>
+    <div class="small text-secondary mt-2">Select 1–50 records. Completed service reports must use the dedicated completion workflow; bulk status changes cannot complete a job.</div>
+  </section>
+</form>
+{% elif q|length >= 2 %}
+<p class="text-secondary">No matching records.</p>
+{% endif %}
+{% endblock %}

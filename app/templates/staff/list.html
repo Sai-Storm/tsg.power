@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links with context %}
+{% block title %}Staff{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="page-title mb-0">Staff accounts</h1>
+  <a class="btn btn-accent" href="{{ url_for('staff.create') }}"><i class="bi bi-person-plus"></i> Add staff</a>
+</div>
+
+<form class="panel row g-2 mb-3" method="get">
+  <div class="col-12 col-md-5"><input class="form-control" name="q" value="{{ q }}" placeholder="Search name, email, phone or staff ID" aria-label="Search"></div>
+  <div class="col-6 col-md-3">
+    <select class="form-select" name="role" aria-label="Role">
+      <option value="">All roles</option>
+      {% for rid, rname in roles %}<option value="{{ rid }}" {{ 'selected' if role_id == rid }}>{{ rname }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-6 col-md-2">
+    <select class="form-select" name="status" aria-label="Status">
+      <option value="">Any status</option>
+      <option value="active" {{ 'selected' if status == 'active' }}>Active</option>
+      <option value="inactive" {{ 'selected' if status == 'inactive' }}>Inactive</option>
+    </select>
+  </div>
+  <div class="col-12 col-md-2 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div>
+</form>
+
+<div class="panel p-0">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>Staff ID</th><th>Name</th><th>Contact</th><th>Role</th><th>Specialization</th><th>Availability</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>
+      {% for u in pagination.items %}
+        <tr>
+          <td class="text-nowrap">{{ u.staff_code }}</td>
+          <td><div class="fw-semibold">{{ u.full_name }}</div><div class="small text-secondary">{{ u.email }}</div></td>
+          <td>{{ u.phone or '\u2014' }}</td>
+          <td><span class="badge text-bg-{{ 'dark' if u.role.name == 'admin' else 'secondary' }}">{{ u.role.name.title() }}</span></td>
+          <td>{{ u.specialization or '\u2014' }}</td>
+          <td>{{ u.availability.replace('_', ' ').title() }}</td>
+          <td>
+            {% if not u.is_active %}<span class="badge text-bg-danger">Inactive</span>
+            {% elif u.is_locked %}<span class="badge text-bg-warning">Locked</span>
+            {% else %}<span class="badge text-bg-success">Active</span>{% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-dark" href="{{ url_for('staff.edit', user_id=u.id) }}">Edit</a>
+            {% if current_user.has_permission('service.assign') %}
+            <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('staff.clear_workload', user_id=u.id) }}" data-title="Clear active job workload"
+              data-message="This removes {{ u.full_name }} from active, open jobs. Completed jobs, job records, and the staff account are kept."
+              data-confirm-text="{{ u.staff_code }}" data-button="Clear workload">Clear workload</button>
+            {% endif %}
+            {% if current_user.has_permission('role.manage') %}
+            <button class="btn btn-sm btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('staff.urgent_clear_workload', user_id=u.id) }}" data-title="Urgently clear active job workload"
+              data-message="This urgently removes {{ u.full_name }} from active, open jobs without considering generator or customer history. Job history and staff account are kept."
+              data-confirm-text="{{ u.staff_code }}" data-button="Urgent clear workload">Urgent clear workload</button>
+            {% endif %}
+            {% if u.id != current_user.id %}
+              <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                data-action-url="{{ url_for('staff.delete', user_id=u.id) }}" data-title="Permanently delete account"
+                data-message="Delete {{ u.full_name }} only if they have no linked operational history. Linked accounts must be deactivated instead."
+                data-button="Delete permanently">Delete</button>
+              {% if u.is_active %}
+              <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                data-action-url="{{ url_for('staff.deactivate', user_id=u.id) }}" data-title="Deactivate account"
+                data-message="{{ u.full_name }} will be signed out and unable to log in. Their job history is kept." data-button="Deactivate">Deactivate</button>
+              {% else %}
+              <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                data-action-url="{{ url_for('staff.activate', user_id=u.id) }}" data-title="Reactivate account"
+                data-message="{{ u.full_name }} will be able to log in again." data-button="Reactivate">Reactivate</button>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="text-center text-secondary py-4">No staff match these filters. Clear the filters or add a staff account.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center p-3">
+    <span class="small text-secondary">{{ pagination.total }} account{{ '' if pagination.total == 1 else 's' }}</span>
+    {{ page_links(pagination, 'staff.list_staff') }}
+  </div>
+</div>
+{% endblock %}

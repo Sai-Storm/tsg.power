@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, active_badge with context %}
+{% block title %}Suppliers{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title mb-0">Suppliers</h1><a class="btn btn-accent" href="{{ url_for('suppliers.create') }}"><i class="bi bi-plus-lg"></i> Add supplier</a></div>
+<form class="panel row g-2 mb-3" method="get">
+  <div class="col-12 col-md-6"><input class="form-control" name="q" value="{{ q }}" placeholder="Name, contact or phone" aria-label="Search suppliers"></div>
+  <div class="col-6 col-md-3"><select class="form-select" name="status" aria-label="Status"><option value="">Any status</option><option value="active" {{ 'selected' if status == 'active' }}>Active</option><option value="inactive" {{ 'selected' if status == 'inactive' }}>Inactive</option></select></div>
+  <div class="col-6 col-md-3 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div></form>
+<div class="panel p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Name</th><th>Contact</th><th>Phone</th><th>Email</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody>
+  {% for s in pagination.items %}<tr><td class="fw-semibold">{{ s.name }}</td><td>{{ s.contact_person or '\u2014' }}</td><td>{{ s.phone or '\u2014' }}</td><td>{{ s.email or '\u2014' }}</td><td>{{ active_badge(s.is_active) }}</td>
+    <td class="text-end text-nowrap"><a class="btn btn-sm btn-outline-dark" href="{{ url_for('suppliers.edit', supplier_id=s.id) }}">Edit</a>
+      <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+        data-action-url="{{ url_for('suppliers.delete', supplier_id=s.id) }}" data-title="Permanently delete supplier"
+        data-message="{{ s.name }} will be permanently deleted if it has no linked inventory items." data-button="Delete permanently">Delete</button>
+      <form class="d-inline" method="post" action="{{ url_for('suppliers.toggle', supplier_id=s.id, action='deactivate' if s.is_active else 'activate') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-{{ 'danger' if s.is_active else 'success' }}" type="submit">{{ 'Deactivate' if s.is_active else 'Reactivate' }}</button></form></td></tr>
+  {% else %}<tr><td colspan="6" class="text-center text-secondary py-4">No suppliers yet.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="d-flex justify-content-between align-items-center p-3"><span class="small text-secondary">{{ pagination.total }} supplier{{ '' if pagination.total == 1 else 's' }}</span>{{ page_links(pagination, 'suppliers.list_suppliers') }}</div></div>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, sort_th, status_badge, priority_badge with context %}
+{% block title %}Service requests{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="page-title mb-0">Service requests</h1>
+  <div class="d-flex gap-2">
+    {% if current_user.has_permission('service.assign') %}<a class="btn btn-outline-dark" href="{{ url_for('services.workload') }}">Staff workload</a>{% endif %}
+    {% if current_user.has_permission('service.create') %}<a class="btn btn-accent" href="{{ url_for('services.create') }}"><i class="bi bi-plus-lg"></i> New request</a>{% endif %}
+  </div>
+</div>
+
+<div class="mb-2 d-flex flex-wrap gap-2">
+  <a class="btn btn-sm {{ 'btn-dark' if not (f.get('overdue') or f.get('unassigned') or f.get('mine')) else 'btn-outline-dark' }}" href="{{ url_for('services.list_services') }}">All</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('mine') == '1' else 'btn-outline-dark' }}" href="{{ url_for('services.list_services', mine=1) }}">My jobs</a>
+  {% if current_user.has_permission('service.view_all') %}
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('unassigned') == '1' else 'btn-outline-dark' }}" href="{{ url_for('services.list_services', unassigned=1) }}">Unassigned</a>{% endif %}
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('overdue') == '1' else 'btn-outline-dark' }}" href="{{ url_for('services.list_services', overdue=1) }}">Overdue</a>
+</div>
+
+<form class="panel row g-2 mb-3" method="get">
+  {% for k in ('mine', 'overdue', 'unassigned') %}{% if f.get(k) == '1' %}<input type="hidden" name="{{ k }}" value="1">{% endif %}{% endfor %}
+  <div class="col-12 col-lg-3"><input class="form-control" name="q" value="{{ f.get('q', '') }}" placeholder="Service ID, customer, phone, serial, staff" aria-label="Search services"></div>
+  <div class="col-6 col-lg-2"><select class="form-select" name="status" aria-label="Status"><option value="">Any status</option>
+    {% for k, v in STATUSES.items() %}<option value="{{ k }}" {{ 'selected' if f.get('status') == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-lg-2"><select class="form-select" name="priority" aria-label="Priority"><option value="">Any priority</option>
+    {% for p in priorities %}<option value="{{ p.id }}" {{ 'selected' if f.get('priority') == (p.id|string) }}>{{ p.name }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-lg-2"><select class="form-select" name="type" aria-label="Service type"><option value="">Any type</option>
+    {% for t in types %}<option value="{{ t.id }}" {{ 'selected' if f.get('type') == (t.id|string) }}>{{ t.name }}</option>{% endfor %}</select></div>
+  {% if technicians %}<div class="col-6 col-lg-3"><select class="form-select" name="technician" aria-label="Technician"><option value="">Any technician</option>
+    {% for t in technicians %}<option value="{{ t.id }}" {{ 'selected' if f.get('technician') == (t.id|string) }}>{{ t.full_name }}</option>{% endfor %}</select></div>{% endif %}
+  {% if current_user.has_permission('invoice.view') %}<div class="col-6 col-lg-2"><select class="form-select" name="payment" aria-label="Payment status"><option value="">Any payment status</option>
+    {% for k, v in [('none', 'No invoice'), ('unpaid', 'Unpaid'), ('partial', 'Partially paid'), ('paid', 'Paid')] %}<option value="{{ k }}" {{ 'selected' if f.get('payment') == k }}>{{ v }}</option>{% endfor %}</select></div>{% endif %}
+  <div class="col-6 col-lg-2"><input class="form-control" type="date" name="from" value="{{ f.get('from', '') }}" aria-label="Created from"></div>
+  <div class="col-6 col-lg-2"><input class="form-control" type="date" name="to" value="{{ f.get('to', '') }}" aria-label="Created to"></div>
+  <div class="col-12 col-lg-2 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div>
+</form>
+
+<div class="panel p-0">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        {{ sort_th("Service ID", "service_id", sort, direction) }}
+        <th>Customer</th><th>Generator</th><th>Type</th>
+        {{ sort_th("Priority", "priority", sort, direction) }}
+        {{ sort_th("Status", "status", sort, direction) }}
+        <th>Technicians</th>
+        {{ sort_th("Visit", "scheduled", sort, direction) }}
+        {{ sort_th("Created", "created", sort, direction) }}
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>
+      {% for s in pagination.items %}
+        <tr>
+          <td class="text-nowrap"><a href="{{ url_for('services.detail', service_pk=s.id) }}">{{ s.service_id }}</a></td>
+          <td>{{ s.customer.name }}<div class="small text-secondary">{{ s.customer.phone_primary }}</div></td>
+          <td>{{ s.generator.brand }} {{ s.generator.model }}<div class="small text-secondary">{{ s.generator.serial_number }}</div></td>
+          <td>{{ s.service_type.name }}</td>
+          <td>{{ priority_badge(s.priority) }}</td>
+          <td>{{ status_badge(s.status) }}{% if s.is_overdue %} <span class="badge text-bg-danger">Overdue</span>{% endif %}</td>
+          <td>{% for t in s.technicians %}{{ t.full_name }}{{ ', ' if not loop.last }}{% else %}<span class="text-secondary">Unassigned</span>{% endfor %}</td>
+          <td class="text-nowrap">{{ s.scheduled_at|dt }}</td>
+          <td class="text-nowrap">{{ s.created_at|dt('%d %b %Y') }}</td>
+          <td class="text-nowrap">
+            {% if s.id in deletable_ids %}
+            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('services.delete_unstarted', service_pk=s.id) }}" data-title="Permanently delete service request"
+              data-message="This permanently deletes {{ s.service_id }} and its initial status record. A deletion audit entry will remain. This cannot be undone."
+              data-button="Delete permanently">Delete</button>
+            {% endif %}
+            {% if current_user.has_permission('role.manage') %}
+            <button class="btn btn-sm btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('services.urgent_delete', service_pk=s.id) }}" data-title="Urgently delete job"
+              data-message="This urgently removes {{ s.service_id }} and its operational history without considering generator or customer history. Protected financial or inventory ledgers block deletion. Audit records are retained."
+              data-confirm-text="{{ s.service_id }}" data-button="Urgently delete">Urgent delete</button>
+            {% endif %}
+            {% if s.id not in deletable_ids and not current_user.has_permission('role.manage') %}<span class="text-secondary">—</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10" class="text-center text-secondary py-4">No service requests match these filters.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center p-3">
+    <span class="small text-secondary">{{ pagination.total }} request{{ '' if pagination.total == 1 else 's' }}</span>
+    {{ page_links(pagination, 'services.list_services') }}
+  </div>
+</div>
+{% endblock %}

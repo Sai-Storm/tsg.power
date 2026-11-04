@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import req_badge with context %}
+{% block title %}Material requests{% endblock %}
+{% block content %}
+<h1 class="page-title">Material requests</h1>
+<ul class="nav nav-tabs mb-3">
+  {% if can_approve %}<li class="nav-item"><a class="nav-link {{ 'active' if tab == 'pending' }}" href="{{ url_for('inventory.requests', tab='pending') }}">Awaiting approval <span class="badge text-bg-warning">{{ pending|length }}</span></a></li>{% endif %}
+  {% if can_issue %}<li class="nav-item"><a class="nav-link {{ 'active' if tab == 'issue' }}" href="{{ url_for('inventory.requests', tab='issue') }}">Ready to issue <span class="badge text-bg-info">{{ queue|length }}</span></a></li>{% endif %}
+</ul>
+
+{% if tab == 'pending' and can_approve %}
+{% for r in pending %}
+<div class="panel mb-3">
+  <div class="d-flex flex-wrap justify-content-between gap-2">
+    <div><a class="fw-semibold" href="{{ url_for('services.detail', service_pk=r.service.id) }}">{{ r.service.service_id }}</a>
+      <span class="text-secondary">&middot; {{ r.service.customer.name }} &middot; requested by {{ r.requested_by.full_name }} on {{ r.created_at|dt }}</span></div>
+    <div class="fw-semibold">{{ r.description }}: {{ r.requested_qty|qty }} {{ r.unit }}</div>
+  </div>
+  <div class="small text-secondary mb-2">{% if r.is_inventory %}In stock: {{ r.item.current_stock|qty }} {{ r.unit }}{% else %}Non-stock: {{ r.category|replace('_', ' ') }}{% endif %}{% if r.purpose %} &middot; Purpose: {{ r.purpose }}{% endif %}</div>
+  <div class="row g-2">
+    <form method="post" action="{{ url_for('inventory.approve', req_id=r.id) }}" class="col-lg-7 row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-4"><label class="form-label small" for="aq{{ r.id }}">Approve qty</label><input class="form-control" id="aq{{ r.id }}" name="approved_qty" value="{{ r.requested_qty|qty }}" inputmode="decimal"></div>
+      {% if not r.is_inventory %}<div class="col-3"><label class="form-label small" for="up{{ r.id }}">Unit cost</label><input class="form-control" id="up{{ r.id }}" name="unit_price" value="{{ r.unit_price or '' }}" inputmode="decimal"></div>{% endif %}
+      <div class="col"><label class="form-label small" for="an{{ r.id }}">Note</label><input class="form-control" id="an{{ r.id }}" name="note" maxlength="200"></div>
+      <div class="col-auto"><button class="btn btn-accent" type="submit">Approve</button></div></form>
+    <form method="post" action="{{ url_for('inventory.reject', req_id=r.id) }}" class="col-lg-5 row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col"><label class="form-label small" for="rn{{ r.id }}">Reason to reject</label><input class="form-control" id="rn{{ r.id }}" name="note" minlength="5" required></div>
+      <div class="col-auto"><button class="btn btn-outline-danger" type="submit">Reject</button></div></form>
+  </div>
+</div>
+{% else %}<div class="panel text-center text-secondary">No requests are waiting for approval.</div>{% endfor %}
+{% endif %}
+
+{% if tab == 'issue' and can_issue %}
+<div class="panel p-0"><div class="table-responsive"><table class="table align-middle mb-0">
+  <thead><tr><th>Job</th><th>Item</th><th>Approved</th><th>Issued</th><th>To issue</th><th>In stock</th><th>Status</th><th></th></tr></thead><tbody>
+  {% for r in queue %}<tr>
+    <td><a href="{{ url_for('services.detail', service_pk=r.service.id) }}">{{ r.service.service_id }}</a></td><td>{{ r.description }}</td>
+    <td>{{ r.approved_qty|qty }} {{ r.unit }}</td><td>{{ r.issued_qty|qty }}</td><td class="fw-semibold">{{ r.to_issue|qty }}</td>
+    <td class="{{ 'text-danger fw-semibold' if r.item.current_stock < r.to_issue }}">{{ r.item.current_stock|qty }}</td><td>{{ req_badge(r) }}</td>
+    <td><form method="post" action="{{ url_for('inventory.issue', req_id=r.id) }}" class="d-flex gap-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input class="form-control form-control-sm" style="width:5.5rem" name="quantity" value="{{ r.to_issue|qty }}" inputmode="decimal" aria-label="Quantity to issue">
+      <button class="btn btn-sm btn-accent" type="submit">Issue</button></form></td></tr>
+  {% else %}<tr><td colspan="8" class="text-center text-secondary py-4">Nothing is waiting to be issued.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endif %}
+{% endblock %}

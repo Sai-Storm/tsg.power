@@ -1,0 +1,55 @@
+{% macro field(f, help=None) %}
+<div class="mb-3">
+  {{ f.label(class="form-label") }}
+  {% if f.type == "SelectField" %}
+    {{ f(class="form-select" ~ (" is-invalid" if f.errors else "")) }}
+  {% else %}
+    {{ f(class="form-control" ~ (" is-invalid" if f.errors else "")) }}
+  {% endif %}
+  {% for e in f.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+  {% if help %}<div class="form-text">{{ help }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro page_links(p, endpoint) %}
+{% if p.pages > 1 %}
+{% set args = request.args.to_dict() %}
+{% set _ = args.pop("page", None) %}
+{% set _ = args.update(request.view_args or {}) %}
+<nav aria-label="Pages">
+  <ul class="pagination pagination-sm mb-0">
+    <li class="page-item {{ 'disabled' if not p.has_prev }}">
+      <a class="page-link" href="{{ url_for(endpoint, page=p.prev_num, **args) if p.has_prev else '#' }}">Previous</a>
+    </li>
+    {% for n in p.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+      {% if n %}
+        <li class="page-item {{ 'active' if n == p.page }}"><a class="page-link" href="{{ url_for(endpoint, page=n, **args) }}">{{ n }}</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+      {% endif %}
+    {% endfor %}
+    <li class="page-item {{ 'disabled' if not p.has_next }}">
+      <a class="page-link" href="{{ url_for(endpoint, page=p.next_num, **args) if p.has_next else '#' }}">Next</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endmacro %}
+
+{% macro sort_th(label, key, sort, direction) %}
+{% set args = request.args.to_dict() %}
+{% set _ = args.pop("page", None) %}
+{% set _ = args.update({"sort": key, "dir": ("desc" if (sort == key and direction == "asc") else "asc")}) %}
+<th scope="col" aria-sort="{{ ('ascending' if direction == 'asc' else 'descending') if sort == key else 'none' }}">
+  <a class="sort-link" href="{{ url_for(request.endpoint, **args) }}">{{ label }}{% if sort == key %} <i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill"></i>{% endif %}</a>
+</th>
+{% endmacro %}
+
+{% macro active_badge(is_active) %}
+<span class="badge text-bg-{{ 'success' if is_active else 'danger' }}">{{ 'Active' if is_active else 'Inactive' }}</span>
+{% endmacro %}
+
+{% macro status_badge(code) %}<span class="badge text-bg-{{ STATUS_BADGE[code] }}">{{ STATUSES[code] }}</span>{% endmacro %}
+{% macro priority_badge(p) %}<span class="badge text-bg-{{ PRIORITY_BADGE.get(p.code, 'secondary') }}">{{ p.name }}</span>{% endmacro %}
+
+{% macro req_badge(r) %}<span class="badge text-bg-{{ REQ_BADGE[r.status] }}">{{ REQ_STATUSES[r.status] }}</span>{% endmacro %}

@@ -1,0 +1,49 @@
+{% from "_macros.html" import field, req_badge with context %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+  <h2 class="fs-5 mb-0">Materials and requirements</h2>
+  {% if can_request and s.requirements|selectattr('status', 'equalto', 'requested')|list %}
+  <form method="post" action="{{ url_for('services.submit_requirements', service_pk=s.id) }}" class="d-print-none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-accent" type="submit">Submit request list for approval</button></form>{% endif %}
+</div>
+<div class="table-responsive"><table class="table align-middle">
+  <thead><tr><th>Item</th><th>Requested</th><th>Approved</th><th>Issued</th><th>Used</th><th>Returned</th><th>Remaining</th><th>Status</th><th class="d-print-none">Actions</th></tr></thead><tbody>
+  {% for r in s.requirements %}
+  <tr>
+    <td><div class="fw-semibold">{{ r.description }}</div><div class="small text-secondary">{% if r.is_inventory %}{{ r.item.part_code }}{% else %}Non-stock: {{ r.category|replace('_', ' ') }}{% endif %}{% if r.purpose %} &middot; {{ r.purpose }}{% endif %}</div>
+      {% if r.decision_note %}<div class="small fst-italic">{{ r.decision_note }}</div>{% endif %}</td>
+    <td>{{ r.requested_qty|qty }} {{ r.unit }}</td><td>{{ r.approved_qty|qty if r.status not in ('requested', 'pending_approval') else '\u2014' }}</td>
+    <td>{{ r.issued_qty|qty if r.is_inventory else '\u2014' }}</td><td>{{ r.used_qty|qty }}</td><td>{{ r.returned_qty|qty if r.is_inventory else '\u2014' }}</td>
+    <td>{{ r.remaining|qty if r.status not in ('requested', 'pending_approval', 'rejected') else '\u2014' }}</td><td>{{ req_badge(r) }}</td>
+    <td class="d-print-none" style="min-width:15rem">
+      {% if r.status == 'requested' and (r.requested_by_id == current_user.id or can_approve) %}
+      <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+        data-action-url="{{ url_for('services.delete_requirement', req_id=r.id) }}" data-title="Remove draft requirement"
+        data-message="Remove this request line before it is submitted for approval?" data-button="Remove line">Remove</button>{% endif %}
+      {% if r.status == 'pending_approval' and can_approve %}
+      <details><summary class="small">Decide</summary>
+        <form method="post" action="{{ url_for('inventory.approve', req_id=r.id) }}" class="d-flex gap-1 my-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.path }}#materials">
+          <input class="form-control form-control-sm" name="approved_qty" value="{{ r.requested_qty|qty }}" inputmode="decimal" aria-label="Approved quantity"><button class="btn btn-sm btn-accent" type="submit">Approve</button></form>
+        <form method="post" action="{{ url_for('inventory.reject', req_id=r.id) }}" class="d-flex gap-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.path }}#materials">
+          <input class="form-control form-control-sm" name="note" placeholder="Reason" minlength="5" required aria-label="Rejection reason"><button class="btn btn-sm btn-outline-danger" type="submit">Reject</button></form></details>{% endif %}
+      {% if r.is_inventory and r.status in ('approved', 'partially_available') and can_issue %}
+      <form method="post" action="{{ url_for('inventory.issue', req_id=r.id) }}" class="d-flex gap-1 mb-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.path }}#materials">
+        <input class="form-control form-control-sm" name="quantity" value="{{ r.to_issue|qty }}" inputmode="decimal" aria-label="Quantity to issue"><button class="btn btn-sm btn-accent" type="submit">Issue</button></form>
+      <div class="small text-secondary">In stock: {{ r.item.current_stock|qty }}</div>{% endif %}
+      {% if r.is_inventory and r.remaining > 0 and can_issue %}
+      <details><summary class="small">Return unused</summary><form method="post" action="{{ url_for('inventory.return_stock', req_id=r.id) }}" class="d-flex gap-1 my-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.path }}#materials">
+        <input class="form-control form-control-sm" name="quantity" value="{{ r.remaining|qty }}" inputmode="decimal" aria-label="Quantity to return"><button class="btn btn-sm btn-outline-dark" type="submit">Return</button></form></details>{% endif %}
+      {% if can_usage and r.status in ('approved', 'partially_available', 'issued', 'used', 'returned') and (r.issued_qty > 0 or not r.is_inventory) %}
+      <details><summary class="small">Record usage</summary><form method="post" action="{{ url_for('services.record_usage', req_id=r.id) }}" class="d-flex gap-1 my-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input class="form-control form-control-sm" name="used_qty" value="{{ r.used_qty|qty }}" inputmode="decimal" aria-label="Total quantity used"><button class="btn btn-sm btn-dark" type="submit">Save</button></form></details>{% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="9" class="text-center text-secondary py-3">No materials requested for this job.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% if can_request %}
+<form method="post" action="{{ url_for('services.add_requirement', service_pk=s.id) }}" class="border rounded p-3 d-print-none" novalidate>{{ req_form.hidden_tag() }}
+  <div class="fw-semibold mb-2">Add a requirement</div>
+  <p class="small text-secondary">Pick a stock item, or leave it as "Not a stock item" and describe transport, tools, external services or special materials.</p>
+  <div class="row"><div class="col-md-6">{{ field(req_form.item_id) }}</div><div class="col-md-3">{{ field(req_form.quantity) }}</div><div class="col-md-3">{{ field(req_form.purpose) }}</div>
+    <div class="col-md-5">{{ field(req_form.description) }}</div><div class="col-md-2">{{ field(req_form.category) }}</div><div class="col-md-2">{{ field(req_form.unit) }}</div><div class="col-md-3">{{ field(req_form.unit_price) }}</div></div>
+  <button class="btn btn-dark" type="submit">Add to list</button>
+</form>{% endif %}

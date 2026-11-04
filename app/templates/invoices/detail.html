@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ i.display_number }}{% endblock %}
+{% block content %}
+{% set s = i.service %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div><h1 class="page-title mb-1">{{ i.display_number }}</h1>
+    <span class="badge text-bg-{{ badge[i.status] }}">{{ statuses[i.status] }}</span>{% if i.is_overdue %} <span class="badge text-bg-danger">Overdue</span>{% endif %}
+    <span class="text-secondary ms-2">Job <a href="{{ url_for('services.detail', service_pk=s.id) }}">{{ s.service_id }}</a> &middot; {{ s.customer.name }}</span></div>
+  <div class="d-flex gap-2 d-print-none">
+    <a class="btn btn-outline-dark" target="_blank" rel="noopener" href="{{ url_for('invoices.invoice_pdf', invoice_id=i.id) }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    {% if can_manage and i.status == 'draft' %}
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action-url="{{ url_for('invoices.discard', invoice_id=i.id) }}" data-title="Discard draft" data-message="This draft invoice will be deleted. Nothing has been issued." data-button="Discard">Discard draft</button>
+    <button class="btn btn-accent" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action-url="{{ url_for('invoices.issue', invoice_id=i.id) }}" data-title="Issue invoice" data-message="An invoice number is assigned and the lines can no longer be changed." data-button="Issue invoice">Issue invoice</button>{% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="panel p-0"><div class="table-responsive"><table class="table align-middle mb-0">
+      <thead><tr><th>Description</th><th>Type</th><th class="text-end">Qty</th><th class="text-end">Unit price</th><th class="text-end">Amount</th>{% if i.status == 'draft' and can_manage %}<th></th>{% endif %}</tr></thead><tbody>
+      {% for it in i.items %}<tr>
+        {% if i.status == 'draft' and can_manage %}
+        <td colspan="1"><form id="u{{ it.id }}" method="post" action="{{ url_for('invoices.update_item', invoice_id=i.id, item_id=it.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" name="description" value="{{ it.description }}" maxlength="200" aria-label="Description"></form></td>
+        <td>{{ item_types[it.item_type] }}</td>
+        <td><input form="u{{ it.id }}" class="form-control form-control-sm text-end" style="width:6rem" name="quantity" value="{{ it.quantity|qty }}" inputmode="decimal" aria-label="Quantity"></td>
+        <td><input form="u{{ it.id }}" class="form-control form-control-sm text-end" style="width:7rem" name="unit_price" value="{{ it.unit_price }}" inputmode="decimal" aria-label="Unit price"></td>
+        <td class="text-end">{{ it.line_total|money }}</td>
+        <td class="text-nowrap"><button form="u{{ it.id }}" class="btn btn-sm btn-dark" type="submit">Save</button>
+          <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+            data-action-url="{{ url_for('invoices.delete_item', invoice_id=i.id, item_id=it.id) }}"
+            data-title="Remove invoice line" data-message="Remove this line from the draft invoice? The invoice total will be recalculated."
+            data-button="Remove line">Remove</button></td>
+        {% else %}
+        <td>{{ it.description }}</td><td>{{ item_types[it.item_type] }}</td><td class="text-end">{{ it.quantity|qty }} {{ it.unit }}</td><td class="text-end">{{ it.unit_price|money }}</td><td class="text-end">{{ it.line_total|money }}</td>
+        {% endif %}</tr>
+      {% else %}<tr><td colspan="6" class="text-center text-secondary py-3">No lines.</td></tr>{% endfor %}</tbody></table></div></div>
+
+    {% if i.status == 'draft' and can_manage %}
+    <form method="post" action="{{ url_for('invoices.add_item', invoice_id=i.id) }}" class="panel mt-3 row g-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-12"><strong>Add a charge</strong></div>
+      <div class="col-md-4"><label class="form-label small" for="nd">Description</label><input class="form-control" id="nd" name="description" required maxlength="200"></div>
+      <div class="col-md-2"><label class="form-label small" for="nt">Type</label><select class="form-select" id="nt" name="item_type">{% for k, v in item_types.items() %}<option value="{{ k }}" {{ 'selected' if k == 'other' }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label small" for="nq">Qty</label><input class="form-control" id="nq" name="quantity" value="1" inputmode="decimal" required></div>
+      <div class="col-md-2"><label class="form-label small" for="np">Unit price</label><input class="form-control" id="np" name="unit_price" inputmode="decimal" required></div>
+      <div class="col-md-2 d-grid"><button class="btn btn-dark" type="submit">Add</button></div></form>
+    <form method="post" action="{{ url_for('invoices.terms', invoice_id=i.id) }}" class="panel mt-3 row g-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-12"><strong>Discount, tax and notes</strong> <span class="small text-secondary">(a discount is an administrator decision and is recorded)</span></div>
+      <div class="col-md-3"><label class="form-label small" for="dd">Discount</label><input class="form-control" id="dd" name="discount" value="{{ i.discount }}" inputmode="decimal"></div>
+      <div class="col-md-5"><label class="form-label small" for="dr">Reason for discount</label><input class="form-control" id="dr" name="discount_reason" value="{{ i.discount_reason or '' }}" maxlength="200"></div>
+      <div class="col-md-2"><label class="form-label small" for="dt">{{ i.tax_name }} %</label><input class="form-control" id="dt" name="tax_rate" value="{{ i.tax_rate }}" inputmode="decimal"></div>
+      <div class="col-12"><label class="form-label small" for="dn">Notes on the invoice</label><textarea class="form-control" id="dn" name="notes" rows="2" maxlength="1000">{{ i.notes or '' }}</textarea></div>
+      <div class="col-12"><button class="btn btn-dark" type="submit">Save terms</button></div></form>
+    {% elif i.notes %}<div class="panel mt-3"><strong>Notes:</strong> <span style="white-space:pre-line">{{ i.notes }}</span></div>{% endif %}
+
+    {% if i.status != 'draft' %}
+    <div class="panel p-0 mt-3"><h2 class="fs-5 p-3 pb-0">Payments</h2><div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Number</th><th>Date</th><th>Type</th><th>Method</th><th>Reference / reason</th><th class="text-end">Amount</th><th>By</th><th></th></tr></thead><tbody>
+      {% for p in i.payments %}<tr><td>{{ p.number }}</td><td class="text-nowrap">{{ p.paid_at|dt }}</td><td>{{ ptypes[p.payment_type] }}</td><td>{{ methods.get(p.method, '\u2014') }}</td><td>{{ p.reference or p.reason or '\u2014' }}</td>
+        <td class="text-end fw-semibold {{ 'text-danger' if p.payment_type == 'refund' }}">{{ '- ' if p.payment_type == 'refund' }}{{ p.amount|money }}</td><td>{{ p.received_by.full_name }}</td>
+        <td><a class="btn btn-sm btn-outline-dark" target="_blank" rel="noopener" href="{{ url_for('invoices.receipt_pdf', payment_id=p.id) }}">PDF</a></td></tr>
+      {% else %}<tr><td colspan="8" class="text-center text-secondary py-3">No payments recorded yet.</td></tr>{% endfor %}</tbody></table></div></div>
+    {% if can_pay and i.status != 'void' %}
+    <form method="post" action="{{ url_for('invoices.add_payment', invoice_id=i.id) }}" class="panel mt-3 row g-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-12"><strong>Record a payment, refund or adjustment</strong> <span class="small text-secondary">Balance due: {{ i.balance|money }}</span></div>
+      <div class="col-md-3"><label class="form-label small" for="pk">Type</label><select class="form-select" id="pk" name="kind">{% for k, v in ptypes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label small" for="pa">Amount</label><input class="form-control" id="pa" name="amount" inputmode="decimal" required></div>
+      <div class="col-md-3"><label class="form-label small" for="pm">Method</label><select class="form-select" id="pm" name="method">{% for k, v in payment_methods.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label small" for="pt">Date and time</label><input class="form-control" id="pt" type="datetime-local" name="paid_at"></div>
+      <div class="col-md-5"><label class="form-label small" for="pr">Reference (UPI id, cheque no.)</label><input class="form-control" id="pr" name="reference" maxlength="100"></div>
+      <div class="col-md-5"><label class="form-label small" for="pn">Reason (required for refunds and adjustments)</label><input class="form-control" id="pn" name="reason"></div>
+      <div class="col-md-2 d-grid"><button class="btn btn-accent" type="submit">Record</button></div></form>
+    {% if customer_advances and i.balance > 0 %}
+    <form method="post" action="{{ url_for('invoices.apply_customer_advance', invoice_id=i.id) }}" class="panel mt-3 row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-12"><strong>Apply customer deposit</strong> <span class="small text-secondary">Deposits remain liabilities until applied to an invoice.</span></div>
+      <div class="col-md-6"><label class="form-label small" for="cad">Available deposit<select class="form-select" id="cad" name="customer_advance_id" required>
+        {% for deposit in customer_advances %}<option value="{{ deposit.id }}">{{ deposit.advance_number }} — {{ deposit.customer.name }} — available {{ customer_advance_balances[deposit.id]|money }}</option>{% endfor %}
+      </select></label></div>
+      <div class="col-md-4"><label class="form-label small" for="caa">Amount (up to {{ i.balance|money }} due)</label><input class="form-control" id="caa" name="amount" type="number" min="0.01" max="{{ i.balance }}" step="0.01" required></div>
+      <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Apply deposit</button></div>
+    </form>
+    {% endif %}
+    {% endif %}{% endif %}
+    {% if i.status == 'void' %}<div class="alert alert-dark mt-3">Voided {{ i.voided_at|dt }}: {{ i.void_reason }}</div>{% endif %}
+  </div>
+
+  <div class="col-lg-4">
+    <div class="panel"><h2 class="fs-5 mb-3">Totals</h2><table class="table table-sm mb-0"><tbody>
+      <tr><td>Labor</td><td class="text-end">{{ i.subtotal_of('labor')|money }}</td></tr><tr><td>Parts</td><td class="text-end">{{ i.subtotal_of('part')|money }}</td></tr><tr><td>Other</td><td class="text-end">{{ i.subtotal_of('other')|money }}</td></tr>
+      <tr class="fw-semibold"><td>Subtotal</td><td class="text-end">{{ i.subtotal|money }}</td></tr>
+      {% if i.discount > 0 %}<tr><td>Discount</td><td class="text-end">- {{ i.discount|money }}</td></tr>{% endif %}
+      <tr><td>{{ i.tax_name }} @ {{ '%g' % i.tax_rate }}%</td><td class="text-end">{{ i.tax_amount|money }}</td></tr>
+      <tr class="fw-bold"><td>Total</td><td class="text-end">{{ i.total|money }}</td></tr>
+      {% if i.status != 'draft' %}<tr><td>Received</td><td class="text-end">{{ i.amount_paid|money }}</td></tr>
+      {% if i.adjustment_total > 0 %}<tr><td>Adjustments</td><td class="text-end">{{ i.adjustment_total|money }}</td></tr>{% endif %}
+      <tr class="fw-bold fs-5"><td>Balance due</td><td class="text-end">{{ i.balance|money if i.status != 'void' else '\u2014' }}</td></tr>{% endif %}</tbody></table>
+      {% if i.due_date and i.status in ('issued', 'partial') %}<div class="small text-secondary mt-2">Due {{ i.due_date|dt('%d %b %Y') }}</div>{% endif %}</div>
+    {% if estimate %}<div class="panel mt-3"><h2 class="fs-6 mb-2">Estimate v{{ estimate.version }} vs final</h2>
+      <table class="table table-sm mb-0"><thead><tr><th></th><th class="text-end">Estimate</th><th class="text-end">Final</th></tr></thead><tbody>
+      <tr><td>Labor</td><td class="text-end">{{ estimate.labor_amount|money }}</td><td class="text-end">{{ i.subtotal_of('labor')|money }}</td></tr>
+      <tr><td>Parts</td><td class="text-end">{{ estimate.parts_amount|money }}</td><td class="text-end">{{ i.subtotal_of('part')|money }}</td></tr>
+      <tr><td>Other</td><td class="text-end">{{ estimate.other_amount|money }}</td><td class="text-end">{{ i.subtotal_of('other')|money }}</td></tr>
+      <tr class="fw-semibold"><td>Total</td><td class="text-end">{{ estimate.total|money }}</td><td class="text-end">{{ i.total|money }}</td></tr></tbody></table>
+      <div class="small text-secondary mt-1">Estimate status: {{ ESTIMATE_STATUSES[estimate.status] }}</div></div>{% endif %}
+    {% if can_manage and i.status in ('issued', 'partial', 'paid') %}
+    <form method="post" action="{{ url_for('invoices.void', invoice_id=i.id) }}" class="panel mt-3 d-print-none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label small" for="vr">Void this invoice (only possible when no money is held)</label>
+      <input class="form-control mb-2" id="vr" name="reason" placeholder="Reason" minlength="5" required><button class="btn btn-sm btn-outline-danger" type="submit">Void invoice</button></form>{% endif %}
+  </div>
+</div>
+{% endblock %}

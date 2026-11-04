@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, priority_badge with context %}
+{% block title %}Jobs waiting for parts{% endblock %}
+{% block content %}
+<h1 class="page-title">Jobs waiting for parts</h1>
+<p class="text-secondary">Open jobs marked Waiting for Spare Parts, or with approved stock that has not been fully issued.</p>
+{% for s in services %}
+<div class="panel mb-3">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+    <div><a class="fw-semibold" href="{{ url_for('services.detail', service_pk=s.id) }}">{{ s.service_id }}</a> {{ status_badge(s.status) }} {{ priority_badge(s.priority) }}
+      <div class="text-secondary small">{{ s.customer.name }} &middot; {{ s.generator.title }} &middot; {% for t in s.technicians %}{{ t.full_name }}{{ ', ' if not loop.last }}{% else %}Unassigned{% endfor %}</div></div>
+  </div>
+  <table class="table table-sm mb-0"><thead><tr><th>Item</th><th>Still needed</th><th>In stock now</th></tr></thead><tbody>
+  {% for r in s.requirements if r.is_waiting_for_stock %}
+    <tr><td>{{ r.description }}</td><td>{{ r.to_issue|qty }} {{ r.unit }}</td>
+      <td class="{{ 'text-danger fw-semibold' if r.item.current_stock < r.to_issue else '' }}">{{ r.item.current_stock|qty }} {{ r.unit }}{% if r.item.current_stock < r.to_issue %} (short by {{ (r.to_issue - r.item.current_stock)|qty }}){% endif %}</td></tr>
+  {% else %}<tr><td colspan="3" class="text-secondary">Marked waiting for parts; no unfulfilled stock lines (check non-stock needs on the job).</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+{% else %}<div class="panel text-center text-secondary">No jobs are waiting for parts.</div>{% endfor %}
+{% endblock %}

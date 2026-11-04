@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Cash & claims{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h1 class="page-title mb-1">Cash & employee claims</h1>
+    <p class="text-secondary mb-0">Advances, expense claims, and cash movements are recorded separately to avoid double counting.</p>
+  </div>
+  <div class="alert alert-info py-2">
+    Financial records are kept in an append-only ledger and cannot be deleted. Use returns, refunds,
+    claim review, invoice voiding, or an offsetting cash entry to correct a transaction.
+  </div>
+  {% if manager %}
+    {% if current_user.has_permission('customer.view') and current_user.has_permission('customer.create') and current_user.has_permission('customer.edit') and current_user.has_permission('inventory.view') and current_user.has_permission('inventory.manage') and current_user.has_permission('inventory.adjust') and current_user.has_permission('invoice.view') and current_user.has_permission('payment.record') %}
+    <div class="panel mb-3">
+      <h2 class="h5">Excel accounting workbook</h2>
+      <p class="small text-secondary mb-2">Export the selected registers, or use the template to import new operations. Imports validate rows individually and return an Excel results report; successful rows are saved and cannot be automatically undone.</p>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <a class="btn btn-outline-primary" href="{{ url_for('finance.export_excel') }}">Export workbook</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('finance.excel_template') }}">Download import template</a>
+      </div>
+      <form method="post" action="{{ url_for('finance.import_excel') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-md-8"><label class="form-label" for="accounting-workbook">Import completed workbook (.xlsx)</label><input class="form-control" id="accounting-workbook" type="file" name="workbook" accept=".xlsx" required></div>
+        <div class="col-md-4 d-grid"><button class="btn btn-accent" type="submit">Validate and import</button></div>
+      </form>
+      <p class="small text-secondary mt-2 mb-0">Invoices are export-only; import payments against an existing issued invoice. Use unique references for cash entries, advances, claims, stock adjustments, and payments to prevent duplicates.</p>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">Excel workbooks also contain customer, inventory, and invoice data. Your account needs those module permissions to export or import the complete workbook.</div>
+    {% endif %}
+  {% endif %}
+  <a class="btn btn-primary" href="{{ url_for('finance.new_claim') }}"><i class="bi bi-receipt"></i> Submit expense claim</a>
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h5">Employee advance requests</h2>
+  {% if current_user.has_permission('finance.claim') %}
+  <form method="post" action="{{ url_for('finance.request_advance') }}" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-2"><label class="form-label">Amount<input class="form-control" type="number" name="amount" min="0.01" max="99999999.99" step="0.01" required></label></div>
+    <div class="col-md-3"><label class="form-label">Related Job Order (optional)<select class="form-select" name="service_request_id"><option value="">Not job-related</option>{% for job in jobs %}<option value="{{ job.id }}">{{ job.service_id }} — {{ job.customer.name }}</option>{% endfor %}</select></label></div>
+    <div class="col-md-5"><label class="form-label">Reason<input class="form-control" name="reason" minlength="3" maxlength="500" required></label></div>
+    <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Request advance</button></div>
+  </form>
+  {% endif %}
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Requested</th>{% if manager %}<th>Employee</th>{% endif %}<th>Job Order</th><th>Reason</th><th class="text-end">Requested</th><th class="text-end">Approved</th><th>Status</th>{% if manager %}<th>Action</th>{% endif %}</tr></thead>
+    <tbody>{% for advance_request in advance_requests %}
+      <tr>
+        <td>{{ advance_request.requested_at|dt('%d %b %Y') }}</td>{% if manager %}<td>{{ advance_request.employee.full_name }}</td>{% endif %}
+        <td>{{ advance_request.service.service_id if advance_request.service else '—' }}</td>
+        <td>{{ advance_request.reason }}{% if advance_request.rejection_reason %}<div class="small text-danger">{{ advance_request.rejection_reason }}</div>{% endif %}</td>
+        <td class="text-end">{{ advance_request.requested_amount|money }}</td>
+        <td class="text-end">{{ advance_request.approved_amount|money if advance_request.approved_amount else '—' }}</td>
+        <td>{{ advance_request.status|title }}</td>
+        {% if manager %}<td>
+          {% if advance_request.status == 'requested' %}
+          <form method="post" action="{{ url_for('finance.approve_advance_request', request_id=advance_request.id) }}" class="d-flex gap-1 mb-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input class="form-control form-control-sm" type="number" name="approved_amount" min="0.01" max="{{ advance_request.requested_amount }}" step="0.01" value="{{ advance_request.requested_amount }}" aria-label="Approved amount">
+            <button class="btn btn-sm btn-success" type="submit">Approve</button>
+          </form>
+          <form method="post" action="{{ url_for('finance.reject_advance_request', request_id=advance_request.id) }}" class="d-flex gap-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" name="reason" minlength="3" maxlength="500" placeholder="Rejection reason" required>
+            <button class="btn btn-sm btn-outline-danger" type="submit">Reject</button>
+          </form>
+          {% elif advance_request.status == 'approved' %}
+          <form method="post" action="{{ url_for('finance.issue_approved_advance', request_id=advance_request.id) }}" class="d-flex gap-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select class="form-select form-select-sm" name="method" aria-label="Payment method"><option value="cash">Cash</option><option value="bank_transfer">Bank</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="other">Other</option></select>
+            <input class="form-control form-control-sm" name="reference" maxlength="100" placeholder="Reference" aria-label="Reference">
+            <button class="btn btn-sm btn-primary" type="submit">Issue</button>
+          </form>
+          {% else %}—{% endif %}
+        </td>{% endif %}
+      </tr>
+    {% else %}<tr><td colspan="{{ 8 if manager else 6 }}" class="text-center text-secondary">No advance requests.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+{% if manager %}
+<div class="panel mb-3">
+  <div class="d-flex justify-content-between align-items-center"><h2 class="h5">Recent customer receipts</h2><a href="{{ url_for('finance.receipts') }}">Open receipt register</a></div>
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead><tr><th>Date</th><th>Receipt</th><th>Invoice</th><th>Customer</th><th>Method</th><th class="text-end">Amount</th></tr></thead>
+    <tbody>{% for payment in receipts %}<tr><td>{{ payment.paid_at|dt('%d %b %Y') }}</td><td>{{ payment.number }}</td><td><a href="{{ url_for('invoices.detail', invoice_id=payment.invoice_id) }}">{{ payment.invoice.display_number }}</a></td><td>{{ payment.invoice.service.customer.name }}</td><td>{{ payment.method|replace('_', ' ')|title if payment.method else '—' }}</td><td class="text-end">{{ payment.amount|money }}</td></tr>
+    {% else %}<tr><td colspan="6" class="text-center text-secondary">No customer receipts.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="panel h-100"><div class="text-secondary small">Net cash on hand</div><div class="fs-3 fw-semibold">{{ cash_balance|money }}</div></div></div>
+  <div class="col-md-4"><div class="panel h-100"><div class="text-secondary small">Submitted claims awaiting review</div><div class="fs-3 fw-semibold">{{ claims|selectattr('status', 'equalto', 'submitted')|list|length }}</div></div></div>
+  <div class="col-md-4"><div class="panel h-100"><div class="text-secondary small">Employee advances outstanding</div><div class="fs-3 fw-semibold">{{ advance_total|money }}</div></div></div>
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h5">Customer deposits</h2>
+  <form method="post" action="{{ url_for('finance.receive_customer_advance') }}" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-3"><label class="form-label">Customer<select class="form-select" name="customer_id" required><option value="">Choose customer</option>{% for customer in customers %}<option value="{{ customer.id }}">{{ customer.name }} ({{ customer.customer_code }})</option>{% endfor %}</select></label></div>
+    <div class="col-md-2"><label class="form-label">Amount<input class="form-control" type="number" name="amount" min="0.01" max="99999999.99" step="0.01" required></label></div>
+    <div class="col-md-2"><label class="form-label">Method<select class="form-select" name="method" required>{% for key, label in payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label></div>
+    <div class="col-md-2"><label class="form-label">Reference<input class="form-control" name="reference" maxlength="100"></label></div>
+    <div class="col-md-2"><label class="form-label">Notes<input class="form-control" name="notes" maxlength="500"></label></div>
+    <div class="col-md-1 d-grid"><button class="btn btn-primary" type="submit">Receive</button></div>
+  </form>
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead><tr><th>Deposit</th><th>Date</th><th>Customer</th><th>Method / reference</th><th class="text-end">Received</th><th class="text-end">Unapplied</th></tr></thead>
+    <tbody>{% for deposit in customer_advances %}<tr>
+      <td>{{ deposit.advance_number }}</td><td>{{ deposit.received_at|dt('%d %b %Y') }}</td><td>{{ deposit.customer.name }}</td>
+      <td>{{ deposit.method|replace('_', ' ')|title }}{% if deposit.reference %} / {{ deposit.reference }}{% endif %}</td>
+      <td class="text-end">{{ deposit.amount|money }}</td><td class="text-end">{{ customer_advance_balances[deposit.id]|money }}</td>
+    </tr>{% else %}<tr><td colspan="6" class="text-center text-secondary">No customer deposits.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h5">Record other cash in/out</h2>
+  <form method="post" action="{{ url_for('finance.record_cash_entry') }}" class="row g-2 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-2"><label class="form-label">Direction<select class="form-select" name="direction" required><option value="in">Cash in</option><option value="out">Cash out</option></select></label></div>
+    <div class="col-md-2"><label class="form-label">Category<select class="form-select" name="category" required><option value="income">Other income</option><option value="expense">Other expense</option><option value="opening">Opening balance</option></select></label></div>
+    <div class="col-md-2"><label class="form-label">Amount<input class="form-control" type="number" name="amount" min="0.01" max="99999999.99" step="0.01" required></label></div>
+    <div class="col-md-3"><label class="form-label">Description<input class="form-control" name="description" minlength="3" maxlength="500" required></label></div>
+    <div class="col-md-2"><label class="form-label">Reference<input class="form-control" name="reference" maxlength="120"></label></div>
+    <div class="col-md-1"><button class="btn btn-primary w-100" type="submit">Record</button></div>
+  </form>
+  <div class="small text-secondary mt-2">Use claims for employee expenses and invoice payments for customer receipts. Record starting cash as an opening balance; it changes cash on hand but is not income.</div>
+</div>
+{% endif %}
+
+<div class="panel mb-3">
+  <h2 class="h5">Employee advances</h2>
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead><tr><th>Advance</th>{% if manager %}<th>Employee</th>{% endif %}<th>Job Order</th><th>Issued</th><th>Reason</th><th class="text-end">Amount</th><th class="text-end">Outstanding</th>{% if manager %}<th>Return unused cash</th>{% endif %}</tr></thead>
+    <tbody>{% for advance in advances %}
+      <tr>
+        <td>{{ advance.advance_number }}</td>{% if manager %}<td>{{ advance.employee.full_name }}</td>{% endif %}
+        <td>{{ advance.service.service_id if advance.service else '—' }}</td><td>{{ advance.issued_at|dt('%d %b %Y') }}</td><td>{{ advance.reason }}</td>
+        <td class="text-end">{{ advance.amount|money }}</td><td class="text-end">{{ balances[advance.id]|money }}</td>
+        {% if manager %}<td><form method="post" action="{{ url_for('finance.return_advance', advance_id=advance.id) }}" class="d-flex gap-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="form-control form-control-sm" type="number" name="amount" min="0.01" max="{{ balances[advance.id] }}" step="0.01" required aria-label="Return amount">
+          <input class="form-control form-control-sm" name="note" maxlength="500" placeholder="Note" aria-label="Return note">
+          <button class="btn btn-sm btn-outline-primary" type="submit" {% if balances[advance.id] <= 0 %}disabled{% endif %}>Return</button>
+        </form></td>{% endif %}
+      </tr>
+    {% else %}<tr><td colspan="{{ 8 if manager else 6 }}" class="text-center text-secondary">No advances recorded.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h5">Expense claims</h2>
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead><tr><th>Claim</th>{% if manager %}<th>Employee</th>{% endif %}<th>Date</th><th>Job Order</th><th>Workflow</th><th>Category / description</th><th>Advance</th><th class="text-end">Amount</th><th class="text-end">Advance used</th><th>Status</th>{% if manager %}<th>Actions</th>{% endif %}</tr></thead>
+    <tbody>{% for claim in claims %}
+      <tr>
+        <td>{{ claim.claim_number }}{% if claim.receipt_reference %}<div class="small text-secondary">Receipt: {{ claim.receipt_reference }}</div>{% endif %}</td>
+        {% if manager %}<td>{{ claim.employee.full_name }}</td>{% endif %}
+        <td>{{ claim.incurred_on|dt('%d %b %Y') }}</td><td>{{ claim.service.service_id if claim.service else '—' }}</td>
+        <td>{{ 'Advance settlement' if claim.advance else 'Personal reimbursement' }}</td>
+        <td><div>{{ categories[claim.category] }}</div><div class="small text-secondary">{{ claim.description }}</div></td>
+        <td>{{ claim.advance.advance_number if claim.advance else '—' }}</td>
+        <td class="text-end">{{ claim.amount|money }}</td><td class="text-end">{{ claim.advance_offset|money }}</td>
+        <td><span class="badge text-bg-{{ 'warning' if claim.status == 'submitted' else 'info' if claim.status == 'approved' else 'success' if claim.status == 'paid' else 'danger' }}">{{ statuses[claim.status] }}</span>
+          {% if claim.rejection_reason %}<div class="small text-danger">{{ claim.rejection_reason }}</div>{% endif %}
+          {% if claim.status == 'approved' %}<div class="small">Due: {{ claim.reimbursement_due|money }}</div>{% endif %}</td>
+        {% if manager %}<td class="text-nowrap">
+          {% if claim.status == 'submitted' %}
+            <form method="post" action="{{ url_for('finance.approve_claim', claim_id=claim.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-success" type="submit">Approve</button></form>
+            <form method="post" action="{{ url_for('finance.reject_claim', claim_id=claim.id) }}" class="d-flex gap-1 mt-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" name="reason" minlength="3" maxlength="500" placeholder="Reason" required><button class="btn btn-sm btn-outline-danger" type="submit">Reject</button></form>
+          {% elif claim.status == 'approved' %}
+            <form method="post" action="{{ url_for('finance.pay_claim', claim_id=claim.id) }}" class="d-flex gap-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select class="form-select form-select-sm" name="method" aria-label="Payout method"><option value="cash">Cash</option><option value="bank_transfer">Bank</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="other">Other</option></select><button class="btn btn-sm btn-primary" type="submit">Pay</button></form>
+          {% else %}—{% endif %}
+        </td>{% endif %}
+      </tr>
+    {% else %}<tr><td colspan="{{ 11 if manager else 9 }}" class="text-center text-secondary">No expense claims.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+{% if manager %}
+<div class="panel">
+  <div class="d-flex justify-content-between align-items-center"><h2 class="h5">Recent cash in/out</h2><div class="d-flex gap-3"><a href="{{ url_for('finance.cash_ledger') }}">View complete cash ledger</a><a href="{{ url_for('reports.index', type='financial') }}">Income & expense report</a></div></div>
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Description</th><th class="text-end">Amount</th></tr></thead>
+    <tbody>{% for movement in movements %}<tr><td>{{ movement.at|dt('%d %b %Y %H:%M') }}</td><td>{{ movement.source|title }} / {{ 'Cash in' if movement.direction == 'in' else 'Cash out' }}</td><td>{{ movement.reference }}</td><td>{{ movement.description }}</td><td class="text-end">{{ movement.amount|money }}</td></tr>
+    {% else %}<tr><td colspan="5" class="text-center text-secondary">No cash movements.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

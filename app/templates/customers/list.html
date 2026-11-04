@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, sort_th, active_badge with context %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="page-title mb-0">Customers</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('customers.export_master') }}">Export master CSV</a>
+    {% if current_user.has_permission('customer.edit') %}<a class="btn btn-outline-dark" href="{{ url_for('customers.duplicates') }}">Review duplicates</a>{% endif %}
+    {% if current_user.has_permission('customer.create') %}<a class="btn btn-accent" href="{{ url_for('customers.create') }}"><i class="bi bi-person-plus"></i> Register customer</a>{% endif %}
+  </div>
+</div>
+
+<form class="panel row g-2 mb-3" method="get">
+  <div class="col-12 col-md-4"><input class="form-control" name="q" value="{{ q }}" placeholder="Name, customer ID, phone or email" aria-label="Search customers"></div>
+  <div class="col-6 col-md-2">
+    <select class="form-select" name="type" aria-label="Customer type">
+      <option value="">All types</option>
+      <option value="individual" {{ 'selected' if ctype == 'individual' }}>Individual</option>
+      <option value="business" {{ 'selected' if ctype == 'business' }}>Business</option>
+    </select>
+  </div>
+  <div class="col-6 col-md-2"><input class="form-control" name="city" value="{{ city }}" placeholder="City" aria-label="City"></div>
+  <div class="col-6 col-md-2">
+    <select class="form-select" name="status" aria-label="Status">
+      <option value="">Any status</option>
+      <option value="active" {{ 'selected' if status == 'active' }}>Active</option>
+      <option value="inactive" {{ 'selected' if status == 'inactive' }}>Inactive</option>
+    </select>
+  </div>
+  <div class="col-6 col-md-2 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div>
+</form>
+
+<div class="panel p-0">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        {{ sort_th("Customer ID", "code", sort, direction) }}
+        {{ sort_th("Name", "name", sort, direction) }}
+        <th>Phone</th>
+        {{ sort_th("City", "city", sort, direction) }}
+        <th>Type</th><th>Generators</th><th>Status</th>
+        {{ sort_th("Registered", "created", sort, direction) }}
+        {% if current_user.has_permission('customer.edit') or current_user.has_permission('role.manage') %}<th class="text-end">Actions</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for c in pagination.items %}
+        <tr>
+          <td class="text-nowrap"><a href="{{ url_for('customers.detail', customer_id=c.id) }}">{{ c.customer_code }}</a></td>
+          <td><div class="fw-semibold">{{ c.name }}</div>{% if c.contact_person %}<div class="small text-secondary">{{ c.contact_person }}</div>{% endif %}</td>
+          <td class="text-nowrap">{{ c.phone_primary }}</td>
+          <td>{{ c.city or '\u2014' }}</td>
+          <td>{{ c.customer_type.title() }}</td>
+          <td>{{ counts.get(c.id, 0) }}</td>
+          <td>{{ active_badge(c.is_active) }}</td>
+          <td class="text-nowrap">{{ c.created_at|dt('%d %b %Y') }}</td>
+          {% if current_user.has_permission('customer.edit') or current_user.has_permission('role.manage') %}
+          <td class="text-end">
+            {% if current_user.has_permission('customer.edit') %}
+            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('customers.delete', customer_id=c.id) }}" data-title="Permanently delete customer"
+              data-message="{{ c.name }} can only be deleted if it has no generators or service history." data-button="Delete permanently">Delete</button>
+            {% endif %}
+            {% if current_user.has_permission('role.manage') %}
+            <button class="btn btn-sm btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('customers.urgent_delete', customer_id=c.id) }}" data-title="Urgently delete customer"
+              data-message="This urgently removes {{ c.name }}, its generators, and linked operational history without considering generator or customer history. Protected financial and inventory ledgers block deletion; audit records remain."
+              data-confirm-text="{{ c.customer_code }}" data-button="Urgently delete">Urgent delete</button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ 9 if current_user.has_permission('customer.edit') or current_user.has_permission('role.manage') else 8 }}" class="text-center text-secondary py-4">No customers match. Clear the filters, or register the customer.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center p-3">
+    <span class="small text-secondary">{{ pagination.total }} customer{{ '' if pagination.total == 1 else 's' }}</span>
+    {{ page_links(pagination, 'customers.list_customers') }}
+  </div>
+</div>
+{% endblock %}

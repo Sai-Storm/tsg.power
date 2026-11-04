@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, sort_th with context %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<h1 class="page-title">Invoices</h1>
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Quick invoice filters">
+  <a class="btn btn-sm {{ 'btn-dark' if not f.get('status') and not f.get('outstanding') and not f.get('overdue') else 'btn-outline-dark' }}" href="{{ url_for('invoices.list_invoices') }}">All invoices</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('status') == 'draft' else 'btn-outline-dark' }}" href="{{ url_for('invoices.list_invoices', status='draft') }}">Draft</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('status') == 'issued' or f.get('outstanding') == '1' else 'btn-outline-dark' }}" href="{{ url_for('invoices.list_invoices', status='issued') }}">Unpaid</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('status') == 'partial' else 'btn-outline-dark' }}" href="{{ url_for('invoices.list_invoices', status='partial') }}">Partially paid</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('status') == 'paid' else 'btn-outline-dark' }}" href="{{ url_for('invoices.list_invoices', status='paid') }}">Paid</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f.get('overdue') == '1' else 'btn-outline-dark' }}" href="{{ url_for('invoices.list_invoices', overdue=1) }}">Overdue</a>
+</nav>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><a class="panel d-block text-decoration-none text-reset" href="{{ url_for('invoices.list_invoices', outstanding=1) }}"><div class="display-6 fw-semibold">{{ summary.amount|money }}</div>Outstanding across {{ summary.count }} invoice{{ '' if summary.count == 1 else 's' }}</a></div>
+  <div class="col-md-4"><a class="panel d-block text-decoration-none text-reset" href="{{ url_for('invoices.list_invoices', overdue=1) }}"><div class="fw-semibold fs-5">Overdue invoices</div>Past their due date and still unpaid</a></div>
+</div>
+<form class="panel row g-2 mb-3" method="get">
+  {% for k in ('outstanding', 'overdue') %}{% if f.get(k) == '1' %}<input type="hidden" name="{{ k }}" value="1">{% endif %}{% endfor %}
+  <div class="col-12 col-md-4"><input class="form-control" name="q" value="{{ f.get('q', '') }}" placeholder="Invoice, service ID, customer, phone or generator serial" aria-label="Search invoices"></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="status" aria-label="Status"><option value="">Any status</option>{% for k, v in statuses.items() %}<option value="{{ k }}" {{ 'selected' if f.get('status') == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><input class="form-control" type="date" name="from" value="{{ f.get('from', '') }}" aria-label="Issued from"></div>
+  <div class="col-6 col-md-2"><input class="form-control" type="date" name="to" value="{{ f.get('to', '') }}" aria-label="Issued to"></div>
+  <div class="col-6 col-md-2 d-grid"><button class="btn btn-dark" type="submit">Search / filter</button></div>
+  {% if f.get('q') or f.get('status') or f.get('from') or f.get('to') or f.get('outstanding') or f.get('overdue') %}
+  <div class="col-6 col-md-2 d-grid"><a class="btn btn-outline-dark" href="{{ url_for('invoices.list_invoices') }}">Clear filters</a></div>
+  {% endif %}
+</form>
+<div class="panel p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr>{{ sort_th("Invoice", "number", sort, direction) }}<th>Job</th><th>Customer</th>{{ sort_th("Issued", "issued", sort, direction) }}<th>Due</th>{{ sort_th("Total", "total", sort, direction) }}<th>Paid</th><th>Balance</th><th>Status</th>{% if can_manage %}<th>Actions</th>{% endif %}</tr></thead><tbody>
+  {% for i in pagination.items %}<tr>
+    <td class="text-nowrap"><a href="{{ url_for('invoices.detail', invoice_id=i.id) }}">{{ i.display_number }}</a></td>
+    <td><a href="{{ url_for('services.detail', service_pk=i.service.id) }}">{{ i.service.service_id }}</a></td><td>{{ i.service.customer.name }}</td>
+    <td class="text-nowrap">{{ i.issued_at|dt('%d %b %Y') }}</td><td class="text-nowrap">{{ i.due_date|dt('%d %b %Y') }}{% if i.is_overdue %} <span class="badge text-bg-danger">Overdue</span>{% endif %}</td>
+    <td class="fw-semibold">{{ i.total|money }}</td><td>{{ i.amount_paid|money }}</td><td>{{ i.balance|money if i.status != 'void' else '\u2014' }}</td>
+    <td><span class="badge text-bg-{{ badge[i.status] }}">{{ statuses[i.status] }}</span></td>
+    {% if can_manage %}<td class="text-nowrap">{% if i.status == 'draft' %}
+      <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+        data-action-url="{{ url_for('invoices.discard', invoice_id=i.id) }}" data-title="Discard draft invoice"
+        data-message="This draft invoice will be deleted. Nothing has been issued." data-button="Discard draft">Delete draft</button>
+      {% else %}<span class="text-secondary">—</span>{% endif %}</td>{% endif %}
+  </tr>
+  {% else %}<tr><td colspan="{{ 10 if can_manage else 9 }}" class="text-center text-secondary py-4">No invoices match.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="d-flex justify-content-between align-items-center p-3"><span class="small text-secondary">{{ pagination.total }} invoice{{ '' if pagination.total == 1 else 's' }}</span>{{ page_links(pagination, 'invoices.list_invoices') }}</div></div>
+{% endblock %}

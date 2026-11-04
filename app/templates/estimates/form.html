@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}Estimate{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Edit estimate v' ~ estimate.version if estimate else 'New quotation' }}</h1>
+{% if service %}
+<p class="text-secondary">For <a href="{{ url_for('services.detail', service_pk=service.id) }}">{{ service.service_id }}</a> &middot; {{ service.customer.name }}.
+{% else %}
+<p class="text-secondary">Create a quotation for a registered customer before opening a Job Order.
+{% endif %}
+The server calculates every total; you only enter the quantities and amounts. Labor is charged at {{ rate|money }} per hour.</p>
+<div class="panel" style="max-width:820px"><form method="post" novalidate>{{ form.hidden_tag() }}
+  {% if not estimate and service %}<input type="hidden" name="service" value="{{ service.id }}">{% endif %}
+  <div class="row">
+    {% if not service %}
+    <div class="col-md-6">{{ field(form.customer_id) }}</div><div class="col-md-6">{{ field(form.generator_id) }}</div>
+    <div class="col-md-6">{{ field(form.service_type_id) }}</div><div class="col-md-6">{{ field(form.priority_id) }}</div>
+    <div class="col-12">{{ field(form.complaint) }}</div><div class="col-12">{{ field(form.location) }}</div>
+    {% endif %}
+    <div class="col-md-4">{{ field(form.labor_hours) }}</div>
+    {% if form.labor_rate %}<div class="col-md-4">{{ field(form.labor_rate) }}</div>{% endif %}
+    <div class="col-md-4">{{ field(form.parts_amount, "Pre-filled from the material list; adjust if needed.") }}</div>
+    <div class="col-md-4">{{ field(form.other_amount) }}</div><div class="col-md-8">{{ field(form.other_description) }}</div>
+    {% if form.discount %}<div class="col-md-4">{{ field(form.discount, "Administrator only.") }}</div><div class="col-md-8">{{ field(form.discount_reason) }}</div>{% endif %}
+    <div class="col-12"><div class="form-check mb-3">{{ form.apply_tax(class="form-check-input") }} {{ form.apply_tax.label(class="form-check-label") }}</div></div>
+    <div class="col-12">{{ field(form.notes) }}</div>
+  </div>
+  <button class="btn btn-accent" type="submit">Save draft</button>
+  <a class="btn btn-light" href="{{ url_for('estimates.detail', est_id=estimate.id) if estimate else url_for('services.detail', service_pk=service.id) if service else url_for('estimates.list_estimates') }}">Cancel</a>
+</form></div>
+{% endblock %}

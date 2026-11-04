@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.env
+instance/*.db
+instance/*.db-*
+instance/*.db.pre-restore-*
+instance/uploads.pre-restore-*/
+instance/backups/
+instance/uploads/*
+!instance/uploads/.gitkeep
+.pytest_cache/

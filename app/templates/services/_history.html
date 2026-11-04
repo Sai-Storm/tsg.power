@@ -1,0 +1,18 @@
+{% from "_macros.html" import status_badge, priority_badge with context %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Service ID</th>{% if show_generator %}<th>Generator</th>{% endif %}<th>Type</th><th>Priority</th><th>Status</th><th>Created</th><th>Completed</th></tr></thead>
+    <tbody>
+    {% for s in services %}
+      <tr>
+        <td class="text-nowrap"><a href="{{ url_for('services.detail', service_pk=s.id) }}">{{ s.service_id }}</a></td>
+        {% if show_generator %}<td>{{ s.generator.generator_code }}</td>{% endif %}
+        <td>{{ s.service_type.name }}</td><td>{{ priority_badge(s.priority) }}</td><td>{{ status_badge(s.status) }}</td>
+        <td class="text-nowrap">{{ s.created_at|dt('%d %b %Y') }}</td><td class="text-nowrap">{{ s.actual_completion|dt('%d %b %Y') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="text-secondary text-center py-3">No service requests yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

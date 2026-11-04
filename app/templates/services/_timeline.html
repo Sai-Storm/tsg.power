@@ -1,0 +1,15 @@
+<ol class="timeline" id="timeline">
+  {% for i in items %}
+  <li class="tl-{{ i.kind }}">
+    <span class="tl-dot"></span>
+    <div class="tl-body">
+      <div class="d-flex flex-wrap justify-content-between gap-2">
+        <strong>{% if i.status %}{{ i.title }}{% if i.from_label %} <span class="text-secondary fw-normal">(from {{ i.from_label }})</span>{% endif %}{% else %}{{ i.kind|replace('_', ' ')|title }}{% endif %}
+          {% if i.kind == 'override' %}<span class="badge text-bg-warning">Admin override</span>{% endif %}</strong>
+        <span class="small text-secondary">{{ i.at|dt }} &middot; {{ i.by }}</span>
+      </div>
+      {% if i.detail %}<div class="tl-detail">{{ i.detail }}</div>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ol>

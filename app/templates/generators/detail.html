@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "_macros.html" import active_badge with context %}
+{% block title %}{{ generator.generator_code }}{% endblock %}
+{% block content %}
+{% set g = generator %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h1 class="page-title mb-1">{{ g.title }}</h1>
+    <span class="text-secondary">{{ g.generator_code }}</span> {{ active_badge(g.is_active) }}
+    {% if g.maintenance_overdue %}<span class="badge text-bg-warning">Maintenance overdue</span>{% endif %}
+  </div>
+  {% if current_user.has_permission('generator.edit') or current_user.has_permission('role.manage') %}
+  <div class="d-flex gap-2">
+    {% if current_user.has_permission('generator.edit') %}
+    <a class="btn btn-outline-dark" href="{{ url_for('generators.edit', generator_id=g.id) }}">Edit</a>
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('generators.delete', generator_id=g.id) }}" data-title="Permanently delete generator"
+      data-message="This deletes {{ g.generator_code }} and any linked service requests only if all are untouched and unassigned. Requests with history or other linked records block the entire deletion. Attached files must be removed first."
+      data-button="Delete permanently">Delete permanently</button>
+    {% endif %}
+    {% if current_user.has_permission('role.manage') %}
+    <button class="btn btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('generators.urgent_delete', generator_id=g.id) }}" data-title="Urgently delete generator and history"
+      data-message="This urgently removes {{ g.generator_code }} and linked operational history without considering generator or customer history. Protected financial and inventory ledgers block deletion; audit records are retained."
+      data-confirm-text="{{ g.generator_code }}" data-button="Urgently delete">Urgent delete</button>
+    {% endif %}
+    {% if current_user.has_permission('generator.edit') and g.is_active %}
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('generators.deactivate', generator_id=g.id) }}" data-title="Deactivate generator"
+      data-message="{{ g.generator_code }} will be marked inactive. Its history is kept." data-button="Deactivate">Deactivate</button>
+    {% elif current_user.has_permission('generator.edit') %}
+    <button class="btn btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('generators.activate', generator_id=g.id) }}" data-title="Reactivate generator"
+      data-message="{{ g.generator_code }} will be active again." data-button="Reactivate">Reactivate</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="panel h-100">
+      <h2 class="fs-5 mb-3">Specification</h2>
+      <dl class="detail-grid">
+        <dt>Owner</dt><dd><a href="{{ url_for('customers.detail', customer_id=g.customer.id) }}">{{ g.customer.customer_code }} {{ g.customer.name }}</a></dd>
+        <dt>Brand / model</dt><dd>{{ g.brand }} {{ g.model }}</dd>
+        <dt>Serial number</dt><dd>{{ g.serial_number }}</dd>
+        <dt>Capacity</dt><dd>{{ '%g' % g.capacity_kva }} kVA</dd>
+        <dt>Fuel</dt><dd>{{ fuel_types[g.fuel_type] }}</dd>
+        <dt>Condition</dt><dd>{{ conditions[g.condition] }}</dd>
+        <dt>Installed</dt><dd>{{ g.installation_date|dt('%d %b %Y') }}</dd>
+        <dt>Location</dt><dd>{{ g.location or '\u2014' }}</dd>
+        <dt>Notes</dt><dd>{{ g.notes or '\u2014' }}</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="panel h-100">
+      <h2 class="fs-5 mb-3">Warranty and maintenance</h2>
+      <dl class="detail-grid">
+        <dt>Warranty</dt><dd>{{ g.warranty_start|dt('%d %b %Y') }} to {{ g.warranty_end|dt('%d %b %Y') }}
+          {% if g.warranty_status == 'active' %}<span class="badge text-bg-success">In warranty</span>
+          {% elif g.warranty_status == 'expired' %}<span class="badge text-bg-secondary">Expired</span>{% endif %}</dd>
+        <dt>Last service</dt><dd>{{ g.last_service_date|dt('%d %b %Y') }}</dd>
+        <dt>Next maintenance</dt><dd>{{ g.next_maintenance_date|dt('%d %b %Y') }}</dd>
+        <dt>Registered</dt><dd>{{ g.created_at|dt }}{% if g.created_by %} by {{ g.created_by.full_name }}{% endif %}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="col-12" id="files">
+    <div class="panel">
+      <h2 class="fs-5 mb-3">Photos and documents</h2>
+      {% set photos = attachments|selectattr('kind', 'equalto', 'photo')|list %}
+      {% set docs = attachments|selectattr('kind', 'equalto', 'document')|list %}
+      <div class="row g-3 mb-3">
+        {% for a in photos %}
+        <div class="col-6 col-md-3">
+          <a href="{{ url_for('files.download', attachment_id=a.id) }}" target="_blank" rel="noopener">
+            <img class="photo-tile" src="{{ url_for('files.download', attachment_id=a.id) }}" alt="{{ a.description or a.original_filename }}" loading="lazy"></a>
+          <div class="small mt-1">{{ a.description or a.original_filename }}</div>
+          {% if current_user.has_permission('generator.edit') or a.uploaded_by_id == current_user.id %}
+          <button class="btn btn-link btn-sm text-danger p-0" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+            data-action-url="{{ url_for('generators.delete_attachment', attachment_id=a.id) }}" data-title="Remove photo"
+            data-message="This photo will be removed from the generator profile." data-button="Remove">Remove</button>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% if docs %}
+      <ul class="list-unstyled">
+        {% for a in docs %}
+        <li class="mb-1"><i class="bi bi-file-earmark-pdf"></i> <a href="{{ url_for('files.download', attachment_id=a.id) }}">{{ a.description or a.original_filename }}</a>
+          <span class="text-secondary small">({{ (a.size_bytes / 1024)|round|int }} KB)</span>
+          {% if current_user.has_permission('generator.edit') or a.uploaded_by_id == current_user.id %}
+          <button class="btn btn-link btn-sm text-danger p-0 ms-2" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+            data-action-url="{{ url_for('generators.delete_attachment', attachment_id=a.id) }}" data-title="Remove document"
+            data-message="This document will be removed from the generator profile." data-button="Remove">Remove</button>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if not attachments %}<p class="text-secondary">No files yet. Add name plate photos or the warranty card below.</p>{% endif %}
+
+      {% if current_user.has_permission('generator.create') or current_user.has_permission('generator.edit') %}
+      <form method="post" action="{{ url_for('generators.upload', generator_id=g.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end border-top pt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-12 col-md-5"><label class="form-label" for="files-input">Files (JPG, PNG, WEBP or PDF, up to 8 MB each)</label>
+          <input class="form-control" id="files-input" type="file" name="files" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple required></div>
+        <div class="col-12 col-md-5"><label class="form-label" for="desc-input">Description</label>
+          <input class="form-control" id="desc-input" name="description" maxlength="200" placeholder="e.g. Name plate"></div>
+        <div class="col-12 col-md-2 d-grid"><button class="btn btn-dark" type="submit">Upload</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="panel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="fs-5 mb-0">Service history</h2>
+        {% if current_user.has_permission('service.create') and g.is_active and g.customer.is_active %}<a class="btn btn-sm btn-accent" href="{{ url_for('services.create', generator_id=g.id) }}">New service request</a>{% endif %}
+      </div>
+      {% with show_generator = false %}{% include "services/_history.html" %}{% endwith %}
+    </div>
+  </div>
+</div>
+{% endblock %}

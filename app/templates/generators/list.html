@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_links, sort_th, active_badge with context %}
+{% block title %}Generators{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="page-title mb-0">Generators{% if customer %} <small class="text-secondary fs-5">of {{ customer.name }}</small>{% endif %}</h1>
+  {% if current_user.has_permission('generator.create') %}
+  <a class="btn btn-accent" href="{{ url_for('generators.create', customer_id=customer.id if customer else None) }}"><i class="bi bi-plus-lg"></i> Register generator</a>{% endif %}
+</div>
+
+<form class="panel row g-2 mb-3" method="get">
+  {% if customer %}<input type="hidden" name="customer" value="{{ customer.id }}">{% endif %}
+  <div class="col-12 col-md-4"><input class="form-control" name="q" value="{{ q }}" placeholder="Serial, model, brand, generator or customer" aria-label="Search generators"></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="fuel" aria-label="Fuel type"><option value="">Any fuel</option>
+    {% for k, v in fuel_types.items() %}<option value="{{ k }}" {{ 'selected' if fuel == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="condition" aria-label="Condition"><option value="">Any condition</option>
+    {% for k, v in conditions.items() %}<option value="{{ k }}" {{ 'selected' if condition == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><select class="form-select" name="maintenance" aria-label="Maintenance">
+    <option value="">Any maintenance</option><option value="overdue" {{ 'selected' if maintenance == 'overdue' }}>Overdue</option></select></div>
+  <div class="col-3 col-md-1"><select class="form-select" name="status" aria-label="Status">
+    <option value="">All</option><option value="active" {{ 'selected' if status == 'active' }}>Active</option><option value="inactive" {{ 'selected' if status == 'inactive' }}>Inactive</option></select></div>
+  <div class="col-3 col-md-1 d-grid"><button class="btn btn-dark" type="submit">Filter</button></div>
+</form>
+
+<div class="panel p-0">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        {{ sort_th("ID", "code", sort, direction) }}
+        {{ sort_th("Brand", "brand", sort, direction) }}
+        {{ sort_th("Model", "model", sort, direction) }}
+        <th>Serial number</th>
+        {{ sort_th("kVA", "capacity", sort, direction) }}
+        <th>Customer</th>
+        {{ sort_th("Next maintenance", "next_maintenance", sort, direction) }}
+        <th>Status</th>{% if current_user.has_permission('generator.edit') or current_user.has_permission('role.manage') %}<th class="text-end">Actions</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for g in pagination.items %}
+        <tr>
+          <td class="text-nowrap"><a href="{{ url_for('generators.detail', generator_id=g.id) }}">{{ g.generator_code }}</a></td>
+          <td>{{ g.brand }}</td><td>{{ g.model }}</td><td>{{ g.serial_number }}</td>
+          <td>{{ '%g' % g.capacity_kva }}</td>
+          <td><a href="{{ url_for('customers.detail', customer_id=g.customer.id) }}">{{ g.customer.name }}</a></td>
+          <td class="text-nowrap">{{ g.next_maintenance_date|dt('%d %b %Y') }}{% if g.maintenance_overdue %} <span class="badge text-bg-warning">Overdue</span>{% endif %}</td>
+          <td>{{ active_badge(g.is_active) }}</td>
+          {% if current_user.has_permission('generator.edit') or current_user.has_permission('role.manage') %}
+          <td class="text-end">
+            {% if current_user.has_permission('generator.edit') %}
+            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('generators.delete', generator_id=g.id) }}" data-title="Permanently delete generator"
+              data-message="{{ g.generator_code }} and linked service requests are deleted only if every request is untouched and unassigned. Any request history or attached files block the entire deletion."
+              data-button="Delete permanently">Delete permanently</button>
+            {% endif %}
+            {% if current_user.has_permission('role.manage') %}
+            <button class="btn btn-sm btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+              data-action-url="{{ url_for('generators.urgent_delete', generator_id=g.id) }}" data-title="Urgently delete generator"
+              data-message="This urgently removes {{ g.generator_code }} and linked operational history without considering generator or customer history. Protected financial and inventory ledgers block deletion; audit records remain."
+              data-confirm-text="{{ g.generator_code }}" data-button="Urgently delete">Urgent delete</button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ 9 if current_user.has_permission('generator.edit') or current_user.has_permission('role.manage') else 8 }}" class="text-center text-secondary py-4">No generators match. Clear the filters, or register a generator from a customer's page.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center p-3">
+    <span class="small text-secondary">{{ pagination.total }} generator{{ '' if pagination.total == 1 else 's' }}</span>
+    {{ page_links(pagination, 'generators.list_generators') }}
+  </div>
+</div>
+{% endblock %}

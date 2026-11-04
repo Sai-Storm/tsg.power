@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Quotation {{ e.quotation_number or e.service.service_id }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div><h1 class="page-title mb-1">Quotation {{ e.quotation_number or e.service.service_id }}</h1>
+    {% if e.service %}<a href="{{ url_for('services.detail', service_pk=e.service.id) }}">Job Order {{ e.service.service_id }}</a>
+    {% else %}{{ e.customer.name }} &middot; {{ e.generator.generator_code }}{% endif %}
+    <span class="badge text-bg-{{ badge[e.status] }}">{{ statuses[e.status] }}</span></div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{{ url_for('estimates.quotation_pdf', est_id=e.id) }}">Download quotation PDF</a>
+    {% if can_edit %}<a class="btn btn-outline-dark" href="{{ url_for('estimates.edit', est_id=e.id) }}">Edit draft</a>{% endif %}
+    {% if can_edit %}
+    <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#confirmModal"
+      data-action-url="{{ url_for('estimates.delete_draft', est_id=e.id) }}" data-title="Permanently delete draft estimate"
+      data-message="Only this draft quotation will be removed. Its deletion will be recorded in the audit log."
+      data-button="Delete permanently">Delete draft</button>
+    {% endif %}
+    {% if can_revise %}<a class="btn btn-outline-dark" href="{{ url_for('estimates.create', service=e.service.id) }}">Create revised estimate</a>{% endif %}
+    {% if e.service %}<a class="btn btn-outline-secondary" href="{{ url_for('services.detail', service_pk=e.service.id) }}">View Job Order</a>
+    {% elif e.status == 'customer_approved' and can_convert %}
+    <form method="post" action="{{ url_for('estimates.convert', est_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-accent" type="submit">Convert to Job Order</button></form>
+    {% endif %}
+    <button class="btn btn-outline-dark d-print-none" type="button" data-print-page>Print</button>
+  </div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-6"><div class="panel"><h2 class="fs-5 mb-3">Breakdown</h2>
+    <table class="table table-sm mb-0"><tbody>
+      <tr><td>Labor ({{ e.labor_hours|qty }} h x {{ e.labor_rate|money }})</td><td class="text-end">{{ e.labor_amount|money }}</td></tr>
+      <tr><td>Parts</td><td class="text-end">{{ e.parts_amount|money }}</td></tr>
+      <tr><td>Other{% if e.other_description %} ({{ e.other_description }}){% endif %}</td><td class="text-end">{{ e.other_amount|money }}</td></tr>
+      <tr class="fw-semibold"><td>Subtotal</td><td class="text-end">{{ e.subtotal|money }}</td></tr>
+      {% if e.discount > 0 %}<tr><td>Discount{% if e.discount_reason %} ({{ e.discount_reason }}){% endif %}</td><td class="text-end">- {{ e.discount|money }}</td></tr>{% endif %}
+      <tr><td>{{ 'Tax @ ' ~ ('%g' % e.tax_rate) ~ '%' if e.apply_tax else 'Tax not applied' }}</td><td class="text-end">{{ e.tax_amount|money }}</td></tr>
+      <tr class="fw-bold fs-5"><td>Total</td><td class="text-end">{{ e.total|money }}</td></tr></tbody></table>
+    {% if e.notes %}<p class="mt-3 mb-0" style="white-space:pre-line"><strong>Notes:</strong> {{ e.notes }}</p>{% endif %}
+  </div></div>
+  <div class="col-lg-6"><div class="panel h-100"><h2 class="fs-5 mb-3">Approval</h2>
+    <dl class="detail-grid">
+      <dt>Prepared by</dt><dd>{{ e.created_by.full_name }}, {{ e.created_at|dt }}</dd>
+      <dt>Administrator</dt><dd>{% if e.approved_by %}Approved by {{ e.approved_by.full_name }}, {{ e.approved_at|dt }}{% elif e.status == 'rejected' and not e.customer_decision %}Rejected{% else %}Not yet approved{% endif %}</dd>
+      <dt>Customer</dt><dd>{% if e.customer_decision %}{{ 'Approved' if e.customer_decision == 'approved' else 'Rejected' }} by {{ e.customer_decided_by }} ({{ methods[e.customer_method] }}), {{ e.customer_decided_at|dt }}
+        {% if e.customer_note %}<br><em>{{ e.customer_note }}</em>{% endif %}<br><span class="small text-secondary">Recorded by {{ e.customer_recorded_by.full_name }}</span>{% else %}Waiting{% endif %}</dd>
+      {% if e.rejection_reason %}<dt>Rejection reason</dt><dd>{{ e.rejection_reason }}</dd>{% endif %}
+    </dl>
+    <div class="d-print-none">
+    {% if e.status == 'draft' and can_approve %}
+      <form method="post" action="{{ url_for('estimates.approve', est_id=e.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-accent" type="submit">Approve estimate</button></form>
+    {% endif %}
+    {% if e.status in ('draft', 'approved') and can_approve %}
+      <form method="post" action="{{ url_for('estimates.reject', est_id=e.id) }}" class="row g-2 mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col"><input class="form-control" name="reason" placeholder="Reason for rejecting" minlength="5" required aria-label="Rejection reason"></div><div class="col-auto"><button class="btn btn-outline-danger" type="submit">Reject</button></div></form>
+    {% endif %}
+    {% if e.status == 'approved' and can_record %}
+      <form method="post" action="{{ url_for('estimates.customer_decision', est_id=e.id) }}" class="border rounded p-3 mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="fw-semibold mb-2">Record the customer's answer</div>
+        <div class="row g-2">
+          <div class="col-md-4"><label class="form-label small" for="cd">Customer said</label><select class="form-select" id="cd" name="decision"><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div>
+          <div class="col-md-8"><label class="form-label small" for="cn">Who gave the answer</label><input class="form-control" id="cn" name="name" value="{{ (e.customer or e.service.customer).contact_person or (e.customer or e.service.customer).name }}" required></div>
+          <div class="col-md-5"><label class="form-label small" for="cm">How</label><select class="form-select" id="cm" name="method">{% for k, v in methods.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+          <div class="col-md-7"><label class="form-label small" for="co">Note (required if rejected)</label><input class="form-control" id="co" name="note" maxlength="300"></div>
+          <div class="col-12"><button class="btn btn-dark" type="submit">Save customer decision</button></div></div></form>
+    {% endif %}</div>
+  </div></div>
+</div>
+{% endblock %}

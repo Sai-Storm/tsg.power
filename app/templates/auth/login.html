@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field with context %}
+{% block title %}Sign in{% endblock %}
+{% block auth %}
+<div class="auth-brand">
+  <span class="brand-logo-frame"><img src="{{ url_for('static', filename='img/tsg-logo.png') }}" alt="TSG logo" class="brand-logo"></span>
+  <h1 class="auth-title">{{ company_name }}</h1>
+</div>
+<p class="text-secondary">Sign in to manage service jobs, parts and billing.</p>
+<form method="post" novalidate>
+  {{ form.hidden_tag() }}
+  {{ field(form.email) }}
+  {{ field(form.password) }}
+  <button class="btn btn-accent w-100" type="submit">Sign in</button>
+</form>
+{% endblock %}
