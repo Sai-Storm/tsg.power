@@ -54,8 +54,7 @@ def local(dt, fmt="%d %b %Y, %H:%M"):
 
 
 def _header(story, title, subtitle=None):
-    name, addr = settings_service.get("company_name"), settings_service.get("company_address")
-    lines = [Paragraph(f"<b>{t(name)}</b>", ParagraphStyle("c", parent=BODY, fontSize=13, leading=16))]
+    lines = []
     for key, prefix in (("company_address", ""), ("company_phone", "Tel: "), ("company_email", ""),
                         ("company_tax_id", "Tax ID: ")):
         value = settings_service.get(key)
@@ -66,13 +65,13 @@ def _header(story, title, subtitle=None):
     if logo:
         try:
             img = Image(logo)
-            ratio = min(32 * mm / img.imageWidth, 20 * mm / img.imageHeight)
+            ratio = min(50 * mm / img.imageWidth, 22 * mm / img.imageHeight)
             left = Image(logo, width=img.imageWidth * ratio, height=img.imageHeight * ratio)
         except Exception:  # noqa: BLE001 - a bad logo must never break a document
             left = ""
     head = Table([[left, lines, [Paragraph(t(title), ParagraphStyle("t", parent=H1, alignment=2))]
                    + ([P(subtitle, ParagraphStyle("s", parent=SMALL, alignment=2))] if subtitle else [])]],
-                 colWidths=[40 * mm, 64 * mm, 76 * mm])
+                 colWidths=[52 * mm, 52 * mm, 76 * mm])
     head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                               ("LINEBELOW", (0, 0), (-1, 0), 1.5, AMBER), ("BOTTOMPADDING", (0, 0), (-1, 0), 8)]))
     story += [head, Spacer(1, 8)]
