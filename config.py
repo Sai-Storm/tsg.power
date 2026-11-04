@@ -13,6 +13,14 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True, "pool_recycle": 280}
 
+    AIVEN_CA_CERT = os.environ.get("AIVEN_CA_CERT")
+    if AIVEN_CA_CERT:
+        SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {
+            "ssl": {
+                "ca": AIVEN_CA_CERT
+            }
+        }
+
     UPLOAD_FOLDER = os.environ.get(
         "UPLOAD_FOLDER", os.path.join(BASE_DIR, "instance", "uploads")
     )
