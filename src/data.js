@@ -1,0 +1,66 @@
+import { LayoutDashboard, UsersRound, FileText, BriefcaseBusiness, ClipboardCheck, Cog, Boxes, PackageCheck, Truck, ReceiptText, Wallet, Building2, ChartNoAxesCombined, UserCog, Settings2, Bell, Wrench, CircleDollarSign } from 'lucide-react';
+
+export const navigation = [
+  { label: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'Staff'] },
+  { section: 'OPERATIONS', roles: ['Admin', 'Staff'] },
+  { label: 'Customers', path: '/customers', icon: UsersRound, roles: ['Admin'] },
+  { label: 'Quotations', path: '/quotations', icon: FileText, roles: ['Admin'] },
+  { label: 'Job orders', path: '/jobs', icon: BriefcaseBusiness, roles: ['Admin', 'Staff'] },
+  { label: 'Service reports', path: '/service-reports', icon: ClipboardCheck, roles: ['Admin', 'Staff'] },
+  { label: 'Machines', path: '/machines', icon: Cog, roles: ['Admin'] },
+  { label: 'Inventory', path: '/inventory', icon: Boxes, roles: ['Admin'] },
+  { label: 'Material requests', path: '/material-requests', icon: PackageCheck, roles: ['Admin', 'Staff'] },
+  { label: 'Suppliers', path: '/suppliers', icon: Truck, roles: ['Admin'] },
+  { label: 'Invoices', path: '/invoices', icon: ReceiptText, roles: ['Admin'] },
+  { label: 'Cash & claims', path: '/cash-claims', icon: Wallet, roles: ['Admin'] },
+  { label: 'My expense claims', path: '/my-expense-claims', icon: ReceiptText, roles: ['Staff'] },
+  { label: 'My advances', path: '/my-advances', icon: CircleDollarSign, roles: ['Staff'] },
+  { label: 'My salary', path: '/my-salary', icon: CircleDollarSign, roles: ['Staff'] },
+  { label: 'Fixed assets', path: '/fixed-assets', icon: Building2, roles: ['Admin'] },
+  { label: 'Recycle bin', path: '/recycle-bin', icon: PackageCheck, roles: ['Admin'] },
+  { section: 'MANAGEMENT', roles: ['Admin', 'Staff'] },
+  { label: 'Reports', path: '/reports', icon: ChartNoAxesCombined, roles: ['Admin'] },
+  { label: 'Staff management', path: '/staff', icon: UsersRound, roles: ['Admin'] },
+  { label: 'Salary management', path: '/salary', icon: Wallet, roles: ['Admin'] },
+  { label: 'Account management', path: '/accounts', icon: UserCog, roles: ['Admin'] },
+  { label: 'Notifications', path: '/notifications', icon: Bell, roles: ['Admin', 'Staff'] },
+  { label: 'Settings', path: '/settings', icon: Settings2, roles: ['Admin'] },
+];
+
+export const moduleInfo = {
+  customers: { title: 'Customers', description: 'Customer records, contacts and installed machines.', columns: ['Customer', 'Code', 'Contact', 'Machines', 'Location', 'Status'], rows: [['Eastern Hydro Works', 'CUS-0018', 'Naveen Rao', '3 machines', 'Chennai', 'Active'], ['Meridian Foods Ltd.', 'CUS-0017', 'Pooja Menon', '2 machines', 'Bengaluru', 'Active'], ['Bluepeak Manufacturing', 'CUS-0016', 'Anil Kumar', '5 machines', 'Coimbatore', 'Active'], ['Aster Cold Storage', 'CUS-0015', 'Meera Shah', '1 machine', 'Hyderabad', 'Active']] },
+  quotations: { title: 'Quotations', description: 'Prepare, track and approve customer quotations.', columns: ['Quotation', 'Customer', 'Date', 'Valid until', 'Amount', 'Status'], rows: [['QT-2026-0142', 'Eastern Hydro Works', '06 Nov 2026', '06 Dec 2026', 'MMK 284,000', 'Sent'], ['QT-2026-0141', 'Meridian Foods Ltd.', '05 Nov 2026', '05 Dec 2026', 'MMK 86,500', 'Draft'], ['QT-2026-0140', 'Bluepeak Manufacturing', '03 Nov 2026', '03 Dec 2026', 'MMK 142,800', 'Approved']] },
+  jobs: { title: 'Job orders', description: 'Track assigned service work from scheduling through completion.', columns: ['Job order', 'Customer · machine', 'Assigned to', 'Due date', 'Priority', 'Status'], rows: [['TSG098', 'Eastern Hydro · Compressor 2', 'Arjun Nair', '08 Nov 2026', 'High', 'In progress'], ['TSG099', 'Meridian Foods · Chiller 1', 'You', '07 Nov 2026', 'Normal', 'Scheduled'], ['TSG100', 'Bluepeak Mfg. · Generator 3', 'Ravi Kumar', '05 Nov 2026', 'High', 'Waiting for parts'], ['TSG097', 'Aster Storage · Cold room', 'You', '04 Nov 2026', 'Normal', 'Overdue']] },
+  'service-reports': { title: 'Service reports', description: 'Record work performed, parts used and customer sign-off.', columns: ['Report', 'Job order', 'Customer', 'Delivered', 'Prepared by', 'Status'], rows: [['SR-2026-0074', 'JO-2026-0091', 'Meridian Foods Ltd.', '06 Nov 2026', 'Arjun Nair', 'Submitted'], ['SR-2026-0073', 'JO-2026-0089', 'Bluepeak Manufacturing', '04 Nov 2026', 'Ravi Kumar', 'Approved']] },
+  machines: { title: 'Machines', description: 'Manage customer equipment and service history.', columns: ['Machine', 'Customer', 'Type', 'Model', 'Serial number', 'Warranty'], rows: [['Compressor 2', 'Eastern Hydro Works', 'Compressor', 'Atlas X90', 'ATX-903114', 'Dec 2027'], ['Chiller 1', 'Meridian Foods Ltd.', 'Chiller', 'CoolPro 450', 'CP-450288', 'Mar 2027']] },
+  inventory: { title: 'Inventory', description: 'Stock on hand, reorder levels and supplier details.', columns: ['Item', 'SKU', 'Category', 'On hand', 'Reorder at', 'Stock status'], rows: [['Air filter assembly', 'FLT-0041', 'Filters', '4 pcs', '8 pcs', 'Low stock'], ['Bearing 6205 ZZ', 'BRG-0012', 'Bearings', '32 pcs', '10 pcs', 'In stock'], ['Compressor oil 5L', 'OIL-0008', 'Lubricants', '6 cans', '8 cans', 'Low stock']] },
+  'material-requests': { title: 'Material requests', description: 'Request and approve parts required for service jobs.', columns: ['Request', 'Job order', 'Requested by', 'Items', 'Date', 'Status'], rows: [['MR-2026-0032', 'JO-2026-0098', 'Arjun Nair', 'Air filter assembly × 2', '06 Nov 2026', 'Pending'], ['MR-2026-0031', 'JO-2026-0096', 'Ravi Kumar', 'Bearing 6205 ZZ × 4', '05 Nov 2026', 'Approved']] },
+  suppliers: { title: 'Suppliers', description: 'Supplier contacts and purchasing relationships.', columns: ['Supplier', 'Contact', 'Phone', 'Email', 'Items supplied'], rows: [['Prime Industrial Supply', 'Kiran Das', '+91 98450 22018', 'orders@primeindustrial.in', '14'], ['Southline Components', 'Leela N.', '+91 98430 11742', 'sales@southline.in', '8']] },
+  invoices: { title: 'Invoices', description: 'Billing, due dates and incoming customer payments.', columns: ['Invoice', 'Customer', 'Issued', 'Due date', 'Amount', 'Status'], rows: [['INV-2026-0088', 'Eastern Hydro Works', '02 Nov 2026', '02 Dec 2026', 'MMK 182,400', 'Partially paid'], ['INV-2026-0087', 'Meridian Foods Ltd.', '29 Oct 2026', '28 Nov 2026', 'MMK 86,500', 'Unpaid'], ['INV-2026-0086', 'Aster Cold Storage', '25 Oct 2026', '24 Nov 2026', 'MMK 42,000', 'Paid']] },
+  'cash-claims': { title: 'Cash & claims', description: 'Company cash movements, advances and expense vouchers.', columns: ['Reference', 'Type', 'Employee / source', 'Date', 'Amount', 'Status'], rows: [['EV-2026-0053', 'Job expense', 'Arjun Nair · JO-2026-0098', '06 Nov 2026', 'MMK 4,850', 'Submitted'], ['ADV-2026-0018', 'Staff advance', 'Ravi Kumar', '04 Nov 2026', 'MMK 10,000', 'Open'], ['PAY-2026-0088', 'Invoice payment', 'Eastern Hydro Works', '03 Nov 2026', 'MMK 100,000', 'Received']] },
+  'my-expense-claims': { title: 'My expense claims', description: 'Submit job and office expenses with receipt attachments.', columns: ['Voucher', 'Category', 'Job order', 'Date', 'Amount', 'Status'], rows: [['EV-2026-0053', 'Job', 'JO-2026-0098', '06 Nov 2026', 'MMK 4,850', 'Submitted'], ['EV-2026-0049', 'Office', '—', '31 Oct 2026', 'MMK 1,250', 'Approved']] },
+  'my-advances': { title: 'My advances', description: 'View advance balances and settlement history.', columns: ['Advance', 'Issued', 'Purpose', 'Amount', 'Claimed', 'Balance'], rows: [['ADV-2026-0018', '04 Nov 2026', 'Service visit · JO-2026-0098', 'MMK 10,000', 'MMK 4,850', 'MMK 5,150']] },
+  'fixed-assets': { title: 'Fixed assets', description: 'Company equipment, vehicles, tools and assignments.', columns: ['Asset', 'Code', 'Category', 'Purchased', 'Cost', 'Assigned to'], rows: [['Field service van', 'FA-0008', 'Vehicle', '12 Mar 2025', 'MMK 850,000', 'Arjun Nair'], ['Pressure testing kit', 'FA-0007', 'Equipment', '06 Jan 2025', 'MMK 124,000', 'Unassigned']] },
+  staff: { title: 'Staff management', description: 'Staff profiles, job assignments and employment status.', columns: ['Staff member', 'Employee ID', 'Designation', 'Phone', 'Active jobs', 'Status'], rows: [['Arjun Nair', 'ST-0012', 'Service Engineer', '+91 98450 11022', '4', 'Active'], ['Ravi Kumar', 'ST-0009', 'Technician', '+91 98430 88140', '3', 'Active']] },
+  salary: { title: 'Salary management', description: 'Prepare monthly salaries, mark payments and issue salary vouchers.', columns: ['Voucher', 'Staff member', 'Salary month', 'Net pay', 'Paid on', 'Status'], rows: [['SAL-2026-1001', 'Arjun Nair', 'Oct 2026', 'MMK 48,000', '31 Oct 2026', 'Paid'], ['SAL-2026-1002', 'Ravi Kumar', 'Oct 2026', 'MMK 36,000', '31 Oct 2026', 'Paid'], ['SAL-2026-1003', 'Arjun Nair', 'Nov 2026', 'MMK 48,000', '—', 'Draft']] },
+  'my-salary': { title: 'My salary', description: 'View your salary payments and download your salary slips.', columns: ['Voucher', 'Staff member', 'Salary month', 'Net pay', 'Paid on', 'Status'], rows: [['SAL-2026-1001', 'Arjun Nair', 'Oct 2026', 'MMK 48,000', '31 Oct 2026', 'Paid'], ['SAL-2026-1003', 'Arjun Nair', 'Nov 2026', 'MMK 48,000', '—', 'Draft']] },
+  accounts: { title: 'Account management', description: 'Create accounts, set roles and reset staff passwords.', columns: ['User', 'Username', 'Role', 'Last login', 'Created', 'Status'], rows: [['Arjun Nair', 'arjun.nair', 'Staff', 'Today, 09:14', '12 May 2025', 'Active'], ['Ravi Kumar', 'ravi.kumar', 'Staff', 'Yesterday', '03 Feb 2025', 'Active']] },
+  notifications: { title: 'Notifications', description: 'Stay up to date on approvals, assignments and requests.', columns: ['Notification', 'Details', 'Received', 'Related to', 'Status'], rows: [['Material request submitted', 'Arjun Nair requested 2 air filter assemblies.', '8 min ago', 'MR-2026-0032', 'Unread'], ['Job assigned', 'You were assigned to JO-2026-0097.', '1 hr ago', 'JO-2026-0097', 'Unread']] },
+  settings: { title: 'Settings', description: 'Manage company details, numbering, tax and operating lists.', columns: ['Setting', 'Current value', 'Last updated by', 'Updated'], rows: [['Company name', 'TSG Power Engineering Co., Ltd.', 'Maya Chen', '06 Nov 2026'], ['Tax rate', '18%', 'Maya Chen', '03 Nov 2026'], ['Quotation prefix', 'QT-2026-', 'Maya Chen', '01 Nov 2026'], ['Job order prefix', 'JO-2026-', 'Maya Chen', '01 Nov 2026'], ['Invoice prefix', 'INV-2026-', 'Maya Chen', '01 Nov 2026'], ['Expense voucher prefix', 'EV-2026-', 'Maya Chen', '01 Nov 2026'], ['Opening cash balance', 'MMK 240,000', 'Maya Chen', '01 Nov 2026'], ['Machine types', 'Compressor, Generator, Chiller', 'Maya Chen', '31 Oct 2026'], ['Office expense types', 'Rent, Electricity, Fuel, Stationery', 'Maya Chen', '31 Oct 2026']] },
+  'recycle-bin': { title: 'Recycle bin', description: 'Restore soft-deleted records or permanently purge them.', columns: ['Module', 'Record', 'Deleted by', 'Deleted date', 'Deletion mode'], rows: [] },
+};
+
+export const dashboardStats = {
+  Admin: [
+    { label: 'Customers', value: '248', delta: '12 added this month', color: 'blue', icon: UsersRound, target: '/customers' },
+    { label: 'Active job orders', value: '36', delta: '8 need attention', color: 'violet', icon: BriefcaseBusiness, target: '/jobs' },
+    { label: 'Unpaid invoices', value: 'MMK 482,000', delta: '12 invoices outstanding', color: 'amber', icon: ReceiptText, target: '/invoices' },
+    { label: 'Cash balance', value: 'MMK 864,000', delta: 'Updated just now', color: 'green', icon: Wallet, target: '/cash-claims' },
+  ],
+  Staff: [
+    { label: 'My assigned jobs', value: '4', delta: '2 scheduled this week', color: 'blue', icon: BriefcaseBusiness, target: '/jobs' },
+    { label: "Today's schedule", value: '2', delta: 'Next visit at 2:30 PM', color: 'violet', icon: ClipboardCheck, target: '/jobs' },
+    { label: 'Pending claims', value: 'MMK 4,850', delta: '1 awaiting approval', color: 'amber', icon: ReceiptText, target: '/my-expense-claims' },
+    { label: 'Open advance balance', value: 'MMK 5,150', delta: '1 advance to settle', color: 'green', icon: Wallet, target: '/my-advances' },
+  ],
+};
