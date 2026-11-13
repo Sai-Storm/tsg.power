@@ -464,3 +464,13 @@ html[data-theme="light"] .account-photo-editor input[type=file]::file-selector-b
 html[data-theme="light"] .record-avatar{border-color:#d6e2ee;box-shadow:0 2px 8px rgba(31,64,96,.12)}
 html[data-theme="light"] .record-avatar-fallback{background:#e8f1fb;color:#2f6fae}
 html[data-theme="light"] .account-photo-preview{background:#e8f1fb;border-color:#d3e1ee;color:#2f6fae;box-shadow:0 6px 16px rgba(31,64,96,.1)}
+
+/* Home-screen install prompt on the sign-in screen */
+.install-app-row{margin-top:12px}
+.install-app-button{width:100%;display:flex;align-items:center;gap:11px;min-height:56px;padding:11px 14px;border:1px solid rgba(226,242,255,.22);border-radius:13px;background:linear-gradient(135deg,rgba(226,243,255,.12),rgba(24,58,82,.34));color:#eef6ff;text-align:left;box-shadow:inset 0 1px rgba(255,255,255,.1);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.install-app-button:hover{background:linear-gradient(135deg,rgba(139,208,239,.2),rgba(31,86,108,.38));border-color:rgba(155,203,250,.5);transform:translateY(-1px)}
+.install-app-button>svg{flex-shrink:0;color:#7fe0cf}
+.install-app-button>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.install-app-button b{font-size:14px;font-weight:700;color:#f2f9ff}
+.install-app-button small{font-size:11px;color:#aec4d8}
+.install-app-note{margin:9px 0 0;color:#bdd0e0;font-size:12px;line-height:1.5;text-align:left}

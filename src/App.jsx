@@ -23,7 +23,7 @@ function App() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   const location = useLocation();
-  useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('tsg-theme', theme); } catch { /* Theme preference is session-only when storage is unavailable. */ } }, [theme]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme === 'light' ? '#f5f7fa' : '#0d2032'); try { localStorage.setItem('tsg-theme', theme); } catch { /* Theme preference is session-only when storage is unavailable. */ } }, [theme]);
   const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
   const login = async (name, role, demo = false) => {
     let nextUser;
@@ -69,10 +69,39 @@ function App() {
   </div>;
 }
 
+function useInstallPrompt() {
+  const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const [available, setAvailable] = useState(() => Boolean(window.__tsgInstallPrompt));
+  const [installed, setInstalled] = useState(isStandalone);
+  useEffect(() => {
+    const sync = () => { setAvailable(Boolean(window.__tsgInstallPrompt)); setInstalled(isStandalone()); };
+    const installedHandler = () => { setAvailable(false); setInstalled(true); };
+    window.addEventListener('tsg-install-available', sync);
+    window.addEventListener('tsg-app-installed', installedHandler);
+    return () => { window.removeEventListener('tsg-install-available', sync); window.removeEventListener('tsg-app-installed', installedHandler); };
+  }, []);
+  const install = async () => {
+    const prompt = window.__tsgInstallPrompt;
+    if (!prompt) return false;
+    prompt.prompt();
+    const choice = await prompt.userChoice.catch(() => ({ outcome: 'dismissed' }));
+    if (choice.outcome === 'accepted') { window.__tsgInstallPrompt = null; setAvailable(false); }
+    return choice.outcome === 'accepted';
+  };
+  return { canInstall: available, installed, install };
+}
+
 function Login({ onLogin }) {
   const [username, setUsername] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const { canInstall, installed, install } = useInstallPrompt(); const [installMessage, setInstallMessage] = useState('');
   const submit = async e => { e.preventDefault(); setBusy(true); setError(''); try { await onLogin({ username, password }); } catch (err) { setError(err.message || 'Could not sign in. Check your details and try again.'); } finally { setBusy(false); } };
-  return <div className="login-screen"><div className="login-art"><div className="login-art-grid" /><div className="login-art-content"><img className="login-center-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div></div><div className="login-side"><div className="login-form-wrap"><div className="mobile-login-mark"><img className="brand-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div><div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p className="login-subtitle">Use your account to continue.</p><form onSubmit={submit}><label>Username<input required autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} placeholder="Enter username" /></label><label>Password<input type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight size={16} /></button></form><div className="login-divider"><span />DEMO<span /></div><p className="demo-note">Explore the interface with a sample role. Demo data is for preview only.</p><div className="demo-buttons"><button onClick={() => onLogin('Maya Chen', 'Admin', true)}><span className="demo-avatar admin-demo" aria-hidden="true">🧑‍💼</span><span><b>Admin demo</b><small>Manage the workspace</small></span><ArrowRight size={15} /></button><button onClick={() => onLogin('Arjun Nair', 'Staff', true)}><span className="demo-avatar staff-demo" aria-hidden="true">🧰</span><span><b>Staff demo</b><small>Field service tasks</small></span><ArrowRight size={15} /></button></div><div className="login-security"><ShieldCheck size={15} /> Secure sign-in · Accounts managed by your administrator</div></div><div className="login-copyright">© 2026 TSG Power Engineering</div></div></div>;
+  const handleInstall = async () => {
+    setInstallMessage('');
+    if (canInstall) { await install(); return; }
+    const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setInstallMessage(iOS ? 'On iPhone or iPad: tap the Share button, then choose Add to Home Screen.' : 'Open your browser menu and choose Install app or Add to Home screen.');
+  };
+  return <div className="login-screen"><div className="login-art"><div className="login-art-grid" /><div className="login-art-content"><img className="login-center-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div></div><div className="login-side"><div className="login-form-wrap"><div className="mobile-login-mark"><img className="brand-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div><div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p className="login-subtitle">Use your account to continue.</p><form onSubmit={submit}><label>Username<input required autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} placeholder="Enter username" /></label><label>Password<input type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight size={16} /></button></form><div className="login-divider"><span />DEMO<span /></div><p className="demo-note">Explore the interface with a sample role. Demo data is for preview only.</p><div className="demo-buttons"><button onClick={() => onLogin('Maya Chen', 'Admin', true)}><span className="demo-avatar admin-demo" aria-hidden="true">🧑‍💼</span><span><b>Admin demo</b><small>Manage the workspace</small></span><ArrowRight size={15} /></button><button onClick={() => onLogin('Arjun Nair', 'Staff', true)}><span className="demo-avatar staff-demo" aria-hidden="true">🧰</span><span><b>Staff demo</b><small>Field service tasks</small></span><ArrowRight size={15} /></button></div>{!installed && <div className="install-app-row"><button type="button" className="install-app-button" onClick={handleInstall}><Download size={18} /><span><b>Install app</b><small>Add TSG to your home screen</small></span></button>{installMessage && <p className="install-app-note">{installMessage}</p>}</div>}<div className="login-security"><ShieldCheck size={15} /> Secure sign-in · Accounts managed by your administrator</div></div><div className="login-copyright">© 2026 TSG Power Engineering</div></div></div>;
 }
 
 function resolveDashboardMetric(data, aliases = []) {
