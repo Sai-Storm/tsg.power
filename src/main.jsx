@@ -7,7 +7,7 @@ import './index.css';
 import './functional.css';
 
 try { document.documentElement.dataset.theme = localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }
-try { const themeMeta = document.querySelector('meta[name="theme-color"]'); if (themeMeta) themeMeta.setAttribute('content', document.documentElement.dataset.theme === 'light' ? '#f5f7fa' : '#0d2032'); } catch { /* Ignore missing theme meta. */ }
+try { const themeMeta = document.querySelector('meta[name="theme-color"]'); if (themeMeta) themeMeta.setAttribute('content', document.documentElement.dataset.theme === 'light' ? '#c6d9fb' : '#0a2353'); } catch { /* Ignore missing theme meta. */ }
 
 window.__tsgInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', event => {
