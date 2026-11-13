@@ -6,6 +6,8 @@ import App from './App.jsx';
 import './index.css';
 import './functional.css';
 
+try { document.documentElement.dataset.theme = localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }
+
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } } });
 
 ReactDOM.createRoot(document.getElementById('root')).render(
