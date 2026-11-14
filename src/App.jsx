@@ -24,6 +24,15 @@ function App() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   const location = useLocation();
   useEffect(() => { document.documentElement.dataset.theme = theme; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme === 'light' ? '#c6d9fb' : '#0a2353'); try { localStorage.setItem('tsg-theme', theme); } catch { /* Theme preference is session-only when storage is unavailable. */ } }, [theme]);
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = event => { if (event.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
+  }, [menuOpen]);
   const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
   const login = async credentials => {
     const nextUser = await signInWithPassword(credentials.email, credentials.password);

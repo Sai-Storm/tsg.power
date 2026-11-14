@@ -699,3 +699,71 @@ html[data-theme="dark"] .nav-list::-webkit-scrollbar-thumb:hover{background:rgba
 .google-signin:hover{background:#fff;box-shadow:0 8px 22px rgba(4,18,35,.22);transform:translateY(-1px)}
 .google-signin:disabled{opacity:.7;cursor:wait;transform:none}
 .google-signin svg{flex:0 0 auto}
+
+/* Mobile usability improvements */
+@media (max-width:900px){
+  .sidebar{z-index:100;width:min(320px,86vw);height:100vh;height:100dvh;max-height:100dvh;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);overscroll-behavior:contain}
+  .sidebar-scrim{z-index:90;background:rgba(10,25,42,.55);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  .main-panel{margin-left:0}
+  .topbar{height:calc(62px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
+  .page-content{padding:18px 16px calc(26px + env(safe-area-inset-bottom))}
+  .page-heading,.module-heading,.dashboard-heading{align-items:stretch;flex-direction:column;gap:12px}
+  .heading-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}
+  .panel{border-radius:15px}
+}
+@media (max-width:650px){
+  .topbar{height:calc(62px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 12px 0;gap:6px}
+  .topbar-left{flex:0 0 auto;gap:0}
+  .breadcrumbs{display:none!important}
+  .global-module-search{flex:1 1 auto;width:auto;max-width:none;min-width:0;height:40px;margin:0 2px}
+  .global-module-search>input{font-size:16px}
+  .topbar-right{flex:0 0 auto;gap:0}
+  .topbar-right .top-icon{width:40px;min-width:40px;height:40px}
+  .profile-button{padding:2px}
+  .profile-button .avatar{width:34px;height:34px}
+  .page-content{padding:16px 12px calc(24px + env(safe-area-inset-bottom))}
+  .page-heading h1,.dashboard-heading h1{font-size:24px;line-height:1.15}
+  .page-heading p{font-size:13px}
+  .heading-actions{gap:8px}
+  .heading-actions>.date-pill{flex:1 1 100%;justify-content:center}
+  .heading-actions>.secondary-button,.heading-actions>.primary-button{flex:1 1 140px}
+  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .metric-card{min-height:132px;padding:13px 12px}
+  .stat-value{font-size:clamp(18px,5.4vw,22px);overflow-wrap:anywhere}
+  .stat-label{font-size:12px}
+  .quick-links{grid-template-columns:1fr}
+  .module-heading>.primary-button,.module-heading>.secondary-button{width:100%}
+  .list-toolbar{padding:12px;gap:10px}
+  .list-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .list-actions .filter-button{grid-column:1/-1;justify-content:center}
+  .list-actions .export-button{width:100%}
+  .filter-panel label{flex:1 1 calc(50% - 6px);min-width:calc(50% - 6px)}
+  .filter-panel .row-action-button{width:100%}
+  .filter-panel>span{flex-basis:100%;margin:0}
+  .table-scroll{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .module-table{min-width:720px}
+  .dashboard-table{min-width:680px}
+  .module-table th:first-child,.module-table td:first-child,.dashboard-table th:first-child,.dashboard-table td:first-child{position:sticky;left:0;z-index:2;background:#f5f9fd;box-shadow:8px 0 12px -10px rgba(20,43,68,.35)}
+  .module-table th:first-child,.dashboard-table th:first-child{z-index:3}
+  .table-footer{flex-wrap:wrap;gap:10px;padding:12px;font-size:11px}
+  .pagination button{width:38px;height:38px}
+  .row-view-button{min-height:40px}
+  .row-more-button{width:42px;height:40px}
+  .modal-backdrop{padding:10px}
+  .modal{width:100%;max-height:92dvh;border-radius:16px;padding:16px}
+  .modal-footer{flex-direction:column}
+  .modal-footer>button{width:100%}
+  .schema-fields{max-height:58dvh}
+  .form-field input,.form-field select,.form-field textarea,.login-form-wrap input,.search-box input,.filter-panel input,.filter-panel select,.report-filters input,.report-filters select,.special-fields input,.special-fields select,.special-fields textarea,.record-fields input,.confirm-label input,.line-item-row input{font-size:16px}
+  .login-side{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+}
+@media (max-width:380px){
+  .stat-grid{grid-template-columns:1fr}
+  .global-module-search{max-width:140px}
+}
+@media (max-width:650px){
+  html[data-theme="dark"] .module-table th:first-child,
+  html[data-theme="dark"] .module-table td:first-child,
+  html[data-theme="dark"] .dashboard-table th:first-child,
+  html[data-theme="dark"] .dashboard-table td:first-child{background:#14283d}
+}
