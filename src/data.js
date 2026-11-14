@@ -50,17 +50,4 @@ export const moduleInfo = {
   'recycle-bin': { title: 'Recycle bin', description: 'Restore soft-deleted records or permanently purge them.', columns: ['Module', 'Record', 'Deleted by', 'Deleted date', 'Deletion mode'], rows: [] },
 };
 
-export const dashboardStats = {
-  Admin: [
-    { label: 'Customers', value: '248', delta: '12 added this month', color: 'blue', icon: UsersRound, target: '/customers' },
-    { label: 'Active job orders', value: '36', delta: '8 need attention', color: 'violet', icon: BriefcaseBusiness, target: '/jobs' },
-    { label: 'Unpaid invoices', value: 'MMK 482,000', delta: '12 invoices outstanding', color: 'amber', icon: ReceiptText, target: '/invoices' },
-    { label: 'Cash balance', value: 'MMK 864,000', delta: 'Updated just now', color: 'green', icon: Wallet, target: '/cash-claims' },
-  ],
-  Staff: [
-    { label: 'My assigned jobs', value: '4', delta: '2 scheduled this week', color: 'blue', icon: BriefcaseBusiness, target: '/jobs' },
-    { label: "Today's schedule", value: '2', delta: 'Next visit at 2:30 PM', color: 'violet', icon: ClipboardCheck, target: '/jobs' },
-    { label: 'Pending claims', value: 'MMK 4,850', delta: '1 awaiting approval', color: 'amber', icon: ReceiptText, target: '/my-expense-claims' },
-    { label: 'Open advance balance', value: 'MMK 5,150', delta: '1 advance to settle', color: 'green', icon: Wallet, target: '/my-advances' },
-  ],
-};
+

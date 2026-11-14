@@ -5,7 +5,7 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from
 import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Download, FileDown, Filter, LogOut, Menu, Moon, MoreHorizontal, Plus, Search, ShieldCheck, Sun, Wrench, X, FileText as FileTextIcon } from 'lucide-react';
 import { apiRequest, exportModule } from './api/client.js';
 import { getCurrentUser, onAuthStateChange, signInWithGoogle, signInWithPassword, signOut as endSession } from './api/auth.js';
-import { dashboardStats, moduleInfo, navigation } from './data.js';
+import { moduleInfo, navigation } from './data.js';
 import { emptyItems, emptyMaterials, emptyRequestItems, formSchemas } from './formSchemas.js';
 
 const initialUser = () => { try { const saved = JSON.parse(sessionStorage.getItem('tsg_user') || 'null'); if (saved?.id?.startsWith('demo-')) { sessionStorage.removeItem('tsg_user'); return null; } return saved; } catch { return null; } };
@@ -183,7 +183,12 @@ function Dashboard({ user }) {
     {label:'Active job orders',value:activeJobs ?? '—',delta:null,target:'/jobs',icon:BriefcaseIcon,color:'teal'},
     {label:'Pending quotations',value:pendingQuotes ?? '—',delta:null,target:'/quotations',icon:FileTextIcon,color:'blue'},
   ];
-  const staffStats = dashboardStats.Staff.map(stat=>({...stat,delta:demo?stat.delta:null}));
+  const staffStats = [
+    {label:'My assigned jobs',value:resolveDashboardMetric(liveCounts,['myAssignedJobs','assignedJobs','assigned_jobs'])??0,delta:null,target:'/jobs',icon:BriefcaseIcon,color:'blue'},
+    {label:"Today's schedule",value:resolveDashboardMetric(liveCounts,['todaysScheduledJobs','scheduledToday','scheduled_today'])??0,delta:null,target:'/jobs',icon:ClipboardIcon,color:'violet'},
+    {label:'Pending claims',value:resolveDashboardMetric(liveCounts,['myPendingClaims','pendingClaims','pending_claims'])??0,delta:null,target:'/my-expense-claims',icon:ReceiptTextIcon,color:'amber'},
+    {label:'Open advance balance',value:resolveDashboardMetric(liveCounts,['myOpenAdvanceBalance','openAdvanceBalance','advance_balance'])??0,delta:null,target:'/my-advances',icon:WalletIcon,color:'green'},
+  ];
   const stats = user.role === 'Admin' ? adminStats : staffStats;
   const today = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
   const moneyText = (value, isMoney = true) => { if(value==null||value==='?')return '—'; if(typeof value==='number')return isMoney?`MMK ${value.toLocaleString('en-US',{maximumFractionDigits:0})}`:value.toLocaleString('en-US'); return String(value); };

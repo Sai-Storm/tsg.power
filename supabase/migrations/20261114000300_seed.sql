@@ -5,7 +5,7 @@ insert into public.settings (key, label, value) values
   ('company_email', 'Company email', ''),
   ('company_address', 'Company address', ''),
   ('tax_rate', 'Tax rate', '18'),
-  ('opening_cash_balance', 'Opening cash balance', '240000'),
+  ('opening_cash_balance', 'Opening cash balance', '0'),
   ('quotation_prefix', 'Quotation prefix', 'QT-'),
   ('job_order_prefix', 'Job order prefix', 'TSG'),
   ('invoice_prefix', 'Invoice prefix', 'INV-'),

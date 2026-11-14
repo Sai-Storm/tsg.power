@@ -816,10 +816,13 @@ declare
   v_cash jsonb;
   v_jobs jsonb;
   v_opening numeric := 0;
+  v_staff uuid;
 begin
   if auth.uid() is null then
     raise exception 'Authentication required' using errcode = '42501';
   end if;
+
+  v_staff := public.current_staff_id();
 
   select coalesce(nullif(value, '')::numeric, 0) into v_opening
   from public.settings where key = 'opening_cash_balance';
@@ -907,7 +910,36 @@ begin
       'pendingMaterialRequests', (select count(*) from public.material_requests where deleted_at is null and lower(status) in ('pending','pending approval')),
       'pendingAdvances', (select count(*) from public.advances where deleted_at is null and lower(status) in ('pending approval','approved')),
       'customers', (select count(*) from public.customers where deleted_at is null and lower(status) = 'active'),
-      'unpaidInvoices', (select count(*) from public.invoices where deleted_at is null and lower(status) in ('unpaid','partially paid','issued'))
+      'unpaidInvoices', (select count(*) from public.invoices where deleted_at is null and lower(status) in ('unpaid','partially paid','issued')),
+      'myAssignedJobs', (
+        select count(*) from public.jobs j
+        where j.deleted_at is null
+          and v_staff is not null
+          and lower(j.status) not in ('completed','cancelled','closed - paid','closed - pending payment')
+          and (j.assigned_to = v_staff or j.team_leader = v_staff or coalesce(j.assigned_employees, '[]'::jsonb) ? (v_staff::text))
+      ),
+      'todaysScheduledJobs', (
+        select count(*) from public.jobs j
+        where j.deleted_at is null
+          and v_staff is not null
+          and lower(j.status) not in ('completed','cancelled','closed - paid','closed - pending payment')
+          and coalesce(j.planned_start_date, j.job_date) = current_date
+          and (j.assigned_to = v_staff or j.team_leader = v_staff or coalesce(j.assigned_employees, '[]'::jsonb) ? (v_staff::text))
+      ),
+      'myPendingClaims', (
+        select coalesce(sum(e.amount), 0) from public.expenses e
+        where e.deleted_at is null
+          and v_staff is not null
+          and e.employee_id = v_staff
+          and lower(e.status) in ('submitted','pending approval')
+      ),
+      'myOpenAdvanceBalance', (
+        select coalesce(sum(a.balance), 0) from public.advances a
+        where a.deleted_at is null
+          and v_staff is not null
+          and a.staff_id = v_staff
+          and lower(a.status) in ('issued','partially settled')
+      )
     ),
     'jobsByStatus', v_jobs,
     'monthlyRevenueExpenses', coalesce(v_revenue, '[]'::jsonb),
