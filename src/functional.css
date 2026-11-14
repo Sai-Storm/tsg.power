@@ -66,14 +66,10 @@ body{font-size:16px;line-height:1.5}
 .quick-links>a>svg{width:18px;height:18px;margin-left:auto}
 .stat-card,.attention-row,.nav-item,button,a{transition-duration:.16s}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #8bb8f4;outline-offset:2px}
-.module-heading>div>p,.panel-heading>div>p,.stat-delta,.support-card p,.module-note,.login-subtitle,.demo-note{display:none!important}
+.module-heading>div>p,.panel-heading>div>p,.stat-delta,.support-card p,.module-note,.login-subtitle{display:none!important}
 @media(max-width:1150px){.sidebar{width:245px}.main-panel{margin-left:245px}.nav-item{font-size:14px}.page-content{padding-inline:24px}}
 @media(max-width:900px){.sidebar{width:min(320px,86vw);transform:translateX(-100%)}.sidebar.sidebar-open{transform:translateX(0)}.main-panel{margin-left:0}.page-content{padding:24px 20px 18px}}
 @media(max-width:650px){.topbar{height:64px;padding-inline:12px}.page-content{padding:20px 14px}.page-heading h1,.dashboard-heading h1{font-size:27px}.date-pill,.secondary-button,.primary-button,.danger-button{min-height:46px;font-size:14px;padding-inline:12px}.quick-links{grid-template-columns:1fr}.quick-links>a{min-height:68px;font-size:14px}.data-table th{font-size:11px}.data-table td{font-size:13px}.row-action-button,.row-action-danger,.row-action-force{min-height:42px}.form-field input,.form-field select,.form-field textarea{font-size:16px}.mobile-login-mark{justify-content:center}.login-security{font-size:12px}}
-.demo-buttons button{min-height:68px;padding:12px 14px;border-radius:12px;gap:12px}
-.demo-buttons b{font-size:15px}
-.demo-buttons small{font-size:12px}
-.demo-avatar{width:46px;height:46px;border-radius:14px;font-size:24px}
 .login-form-wrap h2{font-size:30px}
 
 /* Premium ERP dashboard and shared application chrome */
@@ -294,23 +290,17 @@ body{background:var(--canvas);color:var(--ink);font-family:'DM Sans',Inter,syste
 .login-form-wrap input:focus{border-color:rgba(129,186,255,.8);box-shadow:0 0 0 4px rgba(77,151,237,.19),inset 0 1px 5px rgba(0,0,0,.12)}
 .login-submit{min-height:54px;border:1px solid rgba(255,255,255,.25);border-radius:13px;background:linear-gradient(100deg,#3186f3,#6358e9);box-shadow:0 10px 24px rgba(44,105,226,.32);font-size:15px}
 .login-submit:hover{background:linear-gradient(100deg,#4394ff,#766cf3);box-shadow:0 13px 30px rgba(44,105,226,.42)}
-.demo-buttons button{border:1px solid rgba(232,244,255,.2);background:rgba(255,255,255,.075);color:#eef6ff;box-shadow:inset 0 1px rgba(255,255,255,.1);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-.demo-buttons button:hover{border-color:rgba(155,203,250,.5);background:rgba(255,255,255,.13)}
-.demo-buttons b{color:#f0f6fd}.demo-buttons small{color:#b2c5d8}.demo-buttons button>svg{color:#c3d9ec}
-.demo-avatar{background:rgba(88,151,212,.25);color:#eaf4ff}
 .login-divider{color:#adc0d3}.login-divider span{background:rgba(220,237,250,.26)}
 .login-security{color:#bdd0e0}.login-security svg{color:#65d9bd}
 .login-copyright{color:#b3c4d3}
 .login-form-wrap form label{color:#e2eef9;font-size:14px;font-weight:600;letter-spacing:.01em}
 .login-form-wrap input:-webkit-autofill,.login-form-wrap input:-webkit-autofill:hover,.login-form-wrap input:-webkit-autofill:focus,.login-form-wrap input:-webkit-autofill:active{-webkit-text-fill-color:#f5f9ff;caret-color:#f5f9ff;-webkit-box-shadow:0 0 0 1000px rgba(10,28,46,.98) inset;box-shadow:0 0 0 1000px rgba(10,28,46,.98) inset;transition:background-color 9999s ease-in-out 0s}
 .login-form-wrap input:autofill{color:#f5f9ff;background:rgba(10,28,46,.98)}
-.login-subtitle,.demo-note{display:block!important;color:#aec4d8!important}
-.login-subtitle{font-size:12px!important;margin:8px 0 22px!important}
-.demo-note{font-size:11px!important;color:#a8bed2!important;margin:9px 0 12px!important}
+.login-subtitle{display:block!important;color:#aec4d8!important;font-size:12px!important;margin:8px 0 22px!important}
 .form-error{border-radius:10px}
 @media(max-width:900px){.login-screen{grid-template-columns:1fr}.login-art{display:none}.login-side{min-height:100vh;padding:28px 20px}.login-form-wrap{width:min(100%,480px)}}
 @media(max-width:650px){.login-form-wrap{padding:24px 20px;border-radius:23px}.mobile-login-mark{margin-bottom:20px}.login-form-wrap h2{font-size:28px}.login-copyright{bottom:12px}}
-@media(prefers-reduced-transparency:reduce){.login-form-wrap,.demo-buttons button{backdrop-filter:none;-webkit-backdrop-filter:none;background:#172d42}}
+@media(prefers-reduced-transparency:reduce){.login-form-wrap{backdrop-filter:none;-webkit-backdrop-filter:none;background:#172d42}}
 
 /* Extend the frosted navy glass language across every signed-in ERP module. */
 html[data-theme="dark"] .app-shell{color:#e5effa;background:radial-gradient(ellipse 42% 50% at 78% 5%,rgba(31,117,162,.42),transparent 100%),radial-gradient(ellipse 38% 48% at 55% 94%,rgba(10,145,126,.3),transparent 100%),radial-gradient(ellipse 35% 40% at 8% 52%,rgba(48,82,146,.2),transparent 100%),linear-gradient(135deg,#091522 0%,#0d2032 52%,#102839 100%)}
