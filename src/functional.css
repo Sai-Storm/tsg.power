@@ -705,3 +705,7 @@ html[data-theme="dark"] .nav-list::-webkit-scrollbar-thumb:hover{background:rgba
 @media(max-width:1150px){.sidebar{width:292px}.main-panel{margin-left:292px}}
 @media(max-width:900px){.sidebar{width:min(330px,88vw)}.main-panel{margin-left:0}.nav-item{height:54px;font-size:15px}}
 @media(max-width:650px){.sidebar{width:min(300px,90vw)}.nav-item{height:52px}}
+.google-signin{display:flex;align-items:center;justify-content:center;gap:11px;width:100%;min-height:50px;margin-top:2px;border:1px solid rgba(225,241,255,.3);border-radius:13px;background:rgba(255,255,255,.94);color:#1f2937;font-size:15px;font-weight:600;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,background .15s ease}
+.google-signin:hover{background:#fff;box-shadow:0 8px 22px rgba(4,18,35,.22);transform:translateY(-1px)}
+.google-signin:disabled{opacity:.7;cursor:wait;transform:none}
+.google-signin svg{flex:0 0 auto}
