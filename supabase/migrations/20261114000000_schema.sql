@@ -588,6 +588,19 @@ as $$
   );
 $$;
 
+create or replace function public.is_staff()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and lower(p.role) = 'staff' and p.is_active
+  );
+$$;
+
 create or replace function public.current_staff_id()
 returns uuid
 language sql

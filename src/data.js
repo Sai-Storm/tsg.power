@@ -3,7 +3,7 @@ import { LayoutDashboard, UsersRound, FileText, BriefcaseBusiness, ClipboardChec
 export const navigation = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'Staff'] },
   { section: 'OPERATIONS', roles: ['Admin', 'Staff'] },
-  { label: 'Customers', path: '/customers', icon: UsersRound, roles: ['Admin'] },
+  { label: 'Customers', path: '/customers', icon: UsersRound, roles: ['Staff'] },
   { label: 'Quotations', path: '/quotations', icon: FileText, roles: ['Admin'] },
   { label: 'Job orders', path: '/jobs', icon: BriefcaseBusiness, roles: ['Admin', 'Staff'] },
   { label: 'Service reports', path: '/service-reports', icon: ClipboardCheck, roles: ['Admin', 'Staff'] },

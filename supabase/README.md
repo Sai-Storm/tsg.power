@@ -56,12 +56,13 @@ update public.profiles set role = 'Admin' where email = 'owner@example.com';
 - Every table has RLS enabled.
 - `public.is_admin()` reads the caller's `profiles.role`.
 - Staff can:
-  - read customers, suppliers, machines, inventory, fixed assets, staff, quotations and settings
+  - create, read, update and soft-delete customers
+  - read suppliers, machines, inventory, fixed assets, staff, quotations and settings
   - read/update jobs they are assigned to or lead
   - create/read their own service reports and material requests
   - read their own expenses, advances and salaries
   - read/update their own notifications
-- Admin-only: customers, suppliers, machines, inventory, fixed assets, quotations, invoices, payments, cash entries, salaries, settings writes, recycle bin, and all workflow approvals.
+- Admin-only: suppliers, machines, inventory, fixed assets, quotations, invoices, payments, cash entries, salaries, settings writes, recycle bin, and all workflow approvals.
 - Workflow RPCs are `SECURITY DEFINER` and re-check the caller, so staff cannot bypass RLS by calling them directly.
 
 ## Storage

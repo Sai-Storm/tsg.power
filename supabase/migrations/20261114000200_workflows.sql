@@ -622,7 +622,7 @@ declare
   v_record jsonb;
   v_entry uuid;
 begin
-  if not public.is_admin() then
+  if not public.is_admin() and not (lower(p_resource) = 'customers' and public.is_staff()) then
     raise exception 'Only administrators can delete records' using errcode = '42501';
   end if;
 

@@ -35,8 +35,8 @@ create policy profiles_insert on public.profiles
 ------------------------------------------------------------------
 -- Read-only master data for all signed-in users
 ------------------------------------------------------------------
-create policy customers_admin on public.customers
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy customers_staff_write on public.customers
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 create policy customers_read on public.customers
   for select to authenticated using (true);
 
