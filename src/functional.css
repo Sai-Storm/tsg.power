@@ -767,3 +767,29 @@ html[data-theme="dark"] .nav-list::-webkit-scrollbar-thumb:hover{background:rgba
   html[data-theme="dark"] .dashboard-table th:first-child,
   html[data-theme="dark"] .dashboard-table td:first-child{background:#14283d}
 }
+
+/* Login result pop-ups */
+.login-alert{
+  position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:70;
+  display:flex;align-items:flex-start;gap:11px;width:min(92vw,420px);
+  padding:13px 14px;border-radius:12px;border:1px solid #f2cdc8;
+  background:#fff3f2;color:#a53f37;
+  box-shadow:0 16px 40px rgba(92,26,20,.22);
+  animation:login-alert-in .22s ease-out;
+}
+.login-alert-icon{
+  flex-shrink:0;width:24px;height:24px;border-radius:50%;
+  display:grid;place-items:center;background:#f7d3cf;color:#a5342c;
+  font-weight:800;font-size:13px;
+}
+.login-alert-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.login-alert-copy b{font-size:13px;font-weight:700;letter-spacing:-.01em}
+.login-alert-copy span{font-size:12px;line-height:1.45;color:#8d5b56;word-break:break-word}
+.login-alert button{
+  flex-shrink:0;border:0;background:transparent;color:#b0615a;
+  display:grid;place-items:center;padding:2px;border-radius:6px;
+}
+.login-alert button:hover{background:#f7d9d5}
+@keyframes login-alert-in{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
+@media (prefers-reduced-motion:reduce){.login-alert{animation:none}}
+@media (max-width:650px){.login-alert{top:14px;padding:12px}}
