@@ -790,6 +790,14 @@ html[data-theme="dark"] .nav-list::-webkit-scrollbar-thumb:hover{background:rgba
   display:grid;place-items:center;padding:2px;border-radius:6px;
 }
 .login-alert button:hover{background:#f7d9d5}
+.login-alert.is-success{
+  border-color:#bfe5d2;background:#effaf4;color:#176b4a;
+  box-shadow:0 16px 40px rgba(20,92,63,.2);
+}
+.login-alert.is-success .login-alert-icon{background:#d1f0e0;color:#17845a;font-size:0}
+.login-alert.is-success .login-alert-copy span{color:#4a7d64}
+.login-alert.is-success button{color:#5b9075}
+.login-alert.is-success button:hover{background:#d9f0e4}
 @keyframes login-alert-in{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
 @media (prefers-reduced-motion:reduce){.login-alert{animation:none}}
 @media (max-width:650px){.login-alert{top:14px;padding:12px}}
@@ -808,3 +816,31 @@ html[data-theme="dark"] .profile-summary h2{color:#eff6fc}
 html[data-theme="dark"] .profile-summary p{color:#9db1c5}
 html[data-theme="dark"] .profile-meta{color:#8ea5b9}
 @media(max-width:650px){.profile-panel{padding:18px}.profile-summary{flex-direction:column;align-items:flex-start}.profile-actions .primary-button{width:100%}}
+
+/* Compact sign-in card */
+.login-form-wrap{width:min(100%,420px);padding:clamp(20px,2.8vw,30px);border-radius:22px}
+.login-form-wrap h2{font-size:27px}
+.login-form-wrap form{gap:11px}
+.login-form-wrap form label{gap:6px;font-size:13px}
+.login-form-wrap input{height:44px;border-radius:10px;font-size:14px;padding-inline:13px}
+.login-submit{min-height:46px;border-radius:11px;font-size:14px}
+.login-divider{margin-block:16px;font-size:11px}
+.login-subtitle{font-size:11px!important;margin:6px 0 16px!important}
+.google-signin{min-height:46px;border-radius:11px;font-size:14px}
+.install-app-row{margin-top:9px}
+.install-app-button{min-height:46px;padding:9px 12px;border-radius:11px}
+.install-app-button b{font-size:12px}
+.install-app-button small{font-size:10px}
+.login-security{margin-top:16px;font-size:10px}
+@media(max-width:650px){
+  .login-side{padding:22px 18px 44px}
+  .login-form-wrap{padding:22px 18px;border-radius:20px}
+  .login-form-wrap h2{font-size:24px}
+  .login-form-wrap input{height:42px;border-radius:10px;font-size:16px}
+  .login-submit{min-height:44px;font-size:14px}
+  .login-divider{margin-block:14px}
+  .google-signin{min-height:44px;font-size:13px}
+  .install-app-button{min-height:44px}
+  .mobile-login-mark{margin-bottom:14px}
+  .login-security{margin-top:14px}
+}

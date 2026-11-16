@@ -16,10 +16,38 @@ const accountAvatar = username => readAccountAvatars()[String(username || '').to
 const saveAccountAvatar = (username, photo) => { const avatars = readAccountAvatars(); const key = String(username || '').toLowerCase(); if (photo) avatars[key] = photo; else delete avatars[key]; try { localStorage.setItem(accountAvatarKey, JSON.stringify(avatars)); } catch { /* Storage full — keep the picture in the current session only. */ } };
 const rowAvatar = row => row?._record?.avatar || row?._record?.profile_picture || '';
 
+function oauthErrorFromUrl() {
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const description = query.get('error_description') || hash.get('error_description');
+  const code = query.get('error') || hash.get('error') || query.get('error_code') || hash.get('error_code');
+  if (!description && !code) return '';
+  const cleaned = new URL(window.location.href);
+  ['error', 'error_code', 'error_description'].forEach(key => cleaned.searchParams.delete(key));
+  const hashParams = new URLSearchParams(cleaned.hash.replace(/^#/, ''));
+  ['error', 'error_code', 'error_description'].forEach(key => hashParams.delete(key));
+  cleaned.hash = hashParams.toString() ? `#${hashParams.toString()}` : '';
+  window.history.replaceState({}, '', `${cleaned.pathname}${cleaned.search}${cleaned.hash}`);
+  if (description) return description;
+  if (code === 'access_denied') return 'Google sign-in was cancelled.';
+  return `Google sign-in could not be completed${code ? ` (${code})` : ''}. Please try again.`;
+}
+
+function LoginNotice({ notice, onClose }) {
+  if (!notice) return null;
+  const success = notice.type === 'success';
+  return <div className={`login-alert ${success ? 'is-success' : ''}`} role={success ? 'status' : 'alert'} aria-live="polite">
+    <span className="login-alert-icon">{success ? <Check size={14} /> : '!'}</span>
+    <div className="login-alert-copy"><b>{success ? 'Login successful' : 'Login failed'}</b><span>{notice.message}</span></div>
+    <button type="button" aria-label="Dismiss message" onClick={onClose}><X size={16} /></button>
+  </div>;
+}
+
 function App() {
   const [user, setUser] = useState(initialUser);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const [loginNotice, setLoginNotice] = useState(null);
   const [globalSearch, setGlobalSearch] = useState('');
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   const location = useLocation();
@@ -34,21 +62,43 @@ function App() {
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
   }, [menuOpen]);
   const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
+  const showLoginNotice = (type, message) => {
+    const id = Date.now();
+    setLoginNotice({ id, type, message });
+    window.setTimeout(() => setLoginNotice(current => current?.id === id ? null : current), type === 'success' ? 4000 : 6000);
+  };
   const login = async credentials => {
     const nextUser = await signInWithPassword(credentials.email, credentials.password);
     sessionStorage.removeItem('tsg_token');
     sessionStorage.removeItem('tsg_refresh_token');
     sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
     setUser(nextUser);
-    notify(`Login successful — welcome back, ${nextUser.name.split(' ')[0]}`);
+    showLoginNotice('success', `Welcome back, ${nextUser.name.split(' ')[0]}.`);
   };
   const loginWithGoogle = async () => { sessionStorage.setItem('tsg-login-pending', 'google'); await signInWithGoogle(); };
   const logout = () => { endSession().catch(() => {}); sessionStorage.removeItem('tsg_user'); sessionStorage.removeItem('tsg_token'); sessionStorage.removeItem('tsg_refresh_token'); setUser(null); };
   useEffect(() => { const sync = () => setUser(initialUser()); window.addEventListener('tsg-user-updated', sync); return () => window.removeEventListener('tsg-user-updated', sync); }, []);
-  useEffect(() => { if (user && sessionStorage.getItem('tsg-login-pending') === 'google') { sessionStorage.removeItem('tsg-login-pending'); notify(`Login successful — welcome back, ${user.name.split(' ')[0]}`); } }, [user]);
+  useEffect(() => { if (user && sessionStorage.getItem('tsg-login-pending') === 'google') { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('success', `Welcome back, ${user.name.split(' ')[0]}.`); } }, [user]);
   useEffect(() => {
     let active = true;
-    getCurrentUser().then(nextUser => { if (active && nextUser) { sessionStorage.setItem('tsg_user', JSON.stringify(nextUser)); setUser(nextUser); } }).catch(() => {});
+    const redirectError = oauthErrorFromUrl();
+    const pendingGoogle = sessionStorage.getItem('tsg-login-pending') === 'google';
+    if (redirectError) {
+      sessionStorage.removeItem('tsg-login-pending');
+      showLoginNotice('error', redirectError);
+    }
+    getCurrentUser().then(nextUser => {
+      if (active && nextUser) { sessionStorage.setItem('tsg_user', JSON.stringify(nextUser)); setUser(nextUser); return; }
+      if (active && pendingGoogle && !redirectError) {
+        sessionStorage.removeItem('tsg-login-pending');
+        showLoginNotice('error', 'Google sign-in did not complete. Please try again.');
+      }
+    }).catch(() => {
+      if (active && pendingGoogle) {
+        sessionStorage.removeItem('tsg-login-pending');
+        showLoginNotice('error', 'Google sign-in could not be completed. Please try again.');
+      }
+    });
     const listener = onAuthStateChange((nextUser, event) => {
       if (!active) return;
       if (event === 'SIGNED_OUT' || !nextUser) { sessionStorage.removeItem('tsg_user'); setUser(null); return; }
@@ -58,7 +108,7 @@ function App() {
     return () => { active = false; listener.unsubscribe(); };
   }, []);
 
-  if (!user) return <Login onLogin={login} onGoogleLogin={loginWithGoogle} />;
+  if (!user) return <><Login onLogin={login} onGoogleLogin={loginWithGoogle} onLoginError={message => showLoginNotice('error', message)} onClearLoginNotice={() => setLoginNotice(null)} /><LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} /></>;
   const currentPage = navigation.find(item => item.path === location.pathname)?.label || (location.pathname === '/reports' ? 'Reports' : 'Dashboard');
   const matchingModules = navigation.filter(item => item.path && item.roles?.includes(user.role) && item.label.toLowerCase().includes(globalSearch.trim().toLowerCase())).slice(0, 6);
   return <div className="app-shell">
@@ -80,6 +130,7 @@ function App() {
         <Route path="*" element={<ModuleRoute user={user} notify={notify} />} />
       </Routes><footer className="page-footer"><span>© 2026 TSG Power Engineering</span><span>Secure operations <ShieldCheck size={13} /></span></footer></div>
     </main>
+    <LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} />
     {toast && <div className="toast"><Check size={16} />{toast}</div>}
   </div>;
 }
@@ -106,19 +157,18 @@ function useInstallPrompt() {
   return { canInstall: available, installed, install };
 }
 
-function Login({ onLogin, onGoogleLogin }) {
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [googleBusy, setGoogleBusy] = useState(false);
+function Login({ onLogin, onGoogleLogin, onLoginError, onClearLoginNotice }) {
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false); const [googleBusy, setGoogleBusy] = useState(false);
   const { canInstall, installed, install } = useInstallPrompt(); const [installMessage, setInstallMessage] = useState('');
-  const showLoginError = message => { setError(message); window.setTimeout(() => setError(current => current === message ? '' : current), 5000); };
-  const submit = async e => { e.preventDefault(); setBusy(true); setError(''); try { await onLogin({ email, password }); } catch (err) { showLoginError(err.message || 'Could not sign in. Check your details and try again.'); } finally { setBusy(false); } };
-  const google = async () => { setGoogleBusy(true); setError(''); try { await onGoogleLogin(); } catch (err) { showLoginError(err.message || 'Could not start Google sign-in.'); setGoogleBusy(false); } };
+  const submit = async e => { e.preventDefault(); setBusy(true); onClearLoginNotice(); try { await onLogin({ email, password }); } catch (err) { onLoginError(err.message || 'Could not sign in. Check your details and try again.'); } finally { setBusy(false); } };
+  const google = async () => { setGoogleBusy(true); onClearLoginNotice(); try { await onGoogleLogin(); } catch (err) { onLoginError(err.message || 'Could not start Google sign-in.'); setGoogleBusy(false); } };
   const handleInstall = async () => {
     setInstallMessage('');
     if (canInstall) { await install(); return; }
     const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     setInstallMessage(iOS ? 'On iPhone or iPad: tap the Share button, then choose Add to Home Screen.' : 'Open your browser menu and choose Install app or Add to Home screen.');
   };
-  return <div className="login-screen">{error && <div className="login-alert" role="alert"><span className="login-alert-icon">!</span><div className="login-alert-copy"><b>Login failed</b><span>{error}</span></div><button type="button" aria-label="Dismiss message" onClick={() => setError('')}><X size={16} /></button></div>}<div className="login-art"><div className="login-art-grid" /><div className="login-art-content"><img className="login-center-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div></div><div className="login-side"><div className="login-form-wrap"><div className="mobile-login-mark"><img className="brand-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div><div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p className="login-subtitle">Use your account to continue.</p><form onSubmit={submit}><label>Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your email" /></label><label>Password<input type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" /></label><button className="primary-button login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight size={16} /></button></form><div className="login-divider"><span />OR<span /></div><button type="button" className="google-signin" onClick={google} disabled={googleBusy}><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.3 5.3C37 39.2 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>{googleBusy ? 'Opening Google…' : 'Continue with Google'}</button>{!installed && <div className="install-app-row"><button type="button" className="install-app-button" onClick={handleInstall}><Download size={18} /><span><b>Install app</b><small>Add TSG to your home screen</small></span></button>{installMessage && <p className="install-app-note">{installMessage}</p>}</div>}<div className="login-security"><ShieldCheck size={15} /> Secure sign-in · Accounts managed by your administrator</div></div><div className="login-copyright">© 2026 TSG Power Engineering</div></div></div>;
+  return <div className="login-screen"><div className="login-art"><div className="login-art-grid" /><div className="login-art-content"><img className="login-center-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div></div><div className="login-side"><div className="login-form-wrap"><div className="mobile-login-mark"><img className="brand-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /></div><div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p className="login-subtitle">Use your account to continue.</p><form onSubmit={submit}><label>Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your email" /></label><label>Password<input type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" /></label><button className="primary-button login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight size={16} /></button></form><div className="login-divider"><span />OR<span /></div><button type="button" className="google-signin" onClick={google} disabled={googleBusy}><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.3 5.3C37 39.2 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>{googleBusy ? 'Opening Google…' : 'Continue with Google'}</button>{!installed && <div className="install-app-row"><button type="button" className="install-app-button" onClick={handleInstall}><Download size={18} /><span><b>Install app</b><small>Add TSG to your home screen</small></span></button>{installMessage && <p className="install-app-note">{installMessage}</p>}</div>}<div className="login-security"><ShieldCheck size={15} /> Secure sign-in · Accounts managed by your administrator</div></div><div className="login-copyright">© 2026 TSG Power Engineering</div></div></div>;
 }
 
 function resolveDashboardMetric(data, aliases = []) {
