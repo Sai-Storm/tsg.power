@@ -1,4 +1,4 @@
-import { LayoutDashboard, UsersRound, FileText, BriefcaseBusiness, ClipboardCheck, Cog, Boxes, PackageCheck, Truck, ReceiptText, Wallet, Building2, ChartNoAxesCombined, UserCog, Settings2, Bell, Wrench, CircleDollarSign } from 'lucide-react';
+import { LayoutDashboard, UsersRound, FileText, BriefcaseBusiness, ClipboardCheck, Cog, Boxes, PackageCheck, Truck, ReceiptText, Wallet, Building2, ChartNoAxesCombined, UserCog, UserRound, Settings2, Bell, Wrench, CircleDollarSign } from 'lucide-react';
 
 export const navigation = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'Staff'] },
@@ -20,6 +20,7 @@ export const navigation = [
   { label: 'Recycle bin', path: '/recycle-bin', icon: PackageCheck, roles: ['Admin'] },
   { section: 'MANAGEMENT', roles: ['Admin', 'Staff'] },
   { label: 'Reports', path: '/reports', icon: ChartNoAxesCombined, roles: ['Admin'] },
+  { label: 'My profile', path: '/profile', icon: UserRound, roles: ['Admin', 'Staff'] },
   { label: 'Staff management', path: '/staff', icon: UsersRound, roles: ['Admin'] },
   { label: 'Salary management', path: '/salary', icon: Wallet, roles: ['Admin'] },
   { label: 'Account management', path: '/accounts', icon: UserCog, roles: ['Admin'] },

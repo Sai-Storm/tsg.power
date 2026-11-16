@@ -390,6 +390,13 @@ async function updateResource(resource, id, payload) {
   if (!Object.keys(prepared).length) throw new Error('There are no changes to save.');
   const { data, error } = await supabase.from(table).update(prepared).eq('id', id).select().maybeSingle();
   if (error) throw new Error(errorMessage(error));
+  if (resource === 'staff' && data?.profile_id) {
+    const profileUpdates = filterColumns('users', { name: prepared.name, phone: prepared.phone });
+    if (Object.keys(profileUpdates).length) {
+      const { error: profileError } = await supabase.from('profiles').update(profileUpdates).eq('id', data.profile_id);
+      if (profileError) throw new Error(errorMessage(profileError));
+    }
+  }
   return data;
 }
 

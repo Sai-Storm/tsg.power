@@ -11,6 +11,7 @@ export function toAppUser(profile, authUser) {
     role: String(profile?.role || 'Staff').toLowerCase() === 'admin' ? 'Admin' : 'Staff',
     avatar: profile?.avatar || metadata.avatar_url || '',
     email,
+    phone: profile?.phone || '',
   };
 }
 
@@ -19,7 +20,7 @@ export async function loadProfile(authUser) {
   const client = requireSupabase();
   const { data, error } = await client
     .from('profiles')
-    .select('id,name,username,role,avatar,email,is_active')
+    .select('id,name,username,role,avatar,email,phone,is_active')
     .eq('id', authUser.id)
     .maybeSingle();
   if (error) throw new Error(error.message);
