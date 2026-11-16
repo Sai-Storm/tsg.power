@@ -844,3 +844,16 @@ html[data-theme="dark"] .profile-meta{color:#8ea5b9}
   .mobile-login-mark{margin-bottom:14px}
   .login-security{margin-top:14px}
 }
+
+/* Unified sign-in background with the same grid across the whole page */
+.login-screen{
+  background-color:#0b2a5c;
+  background-image:
+    linear-gradient(rgba(197,224,255,.085) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(197,224,255,.085) 1px,transparent 1px),
+    linear-gradient(105deg,#0a2352 0%,#0d2d61 42%,#1a4d91 76%,#2367be 100%);
+  background-size:64px 64px,64px 64px,100% 100%;
+}
+.login-screen:before,.login-screen:after{display:none}
+.login-art,.login-art:before{background:transparent}
+.login-art-grid{display:none}
