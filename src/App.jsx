@@ -501,6 +501,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
         else if (dialog.type === 'create') await apiRequest(`/${dialog.apiResource || apiEndpoint(slug)}`, { method: 'POST', body: requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)) });
         else if (dialog.type === 'edit') await apiRequest(`/${dialog.apiResource || apiEndpoint(slug)}/${recordId}`, { method: 'PUT', body: requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)) });
         await queryClient.invalidateQueries({ queryKey: ['module', slug] });
+        if (slug === 'jobs') await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       } else if (dialog.type === 'reset-password') { /* Demo accounts are preview-only. */ }
       else if (dialog.type === 'account-photo') {
         saveAccountAvatar(dialog.accountUsername || dialog.row?.[1], dialog.photo);
@@ -587,6 +588,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
         else if (apiModule === 'expenses') await apiRequest(`/${apiModule}/${recordId}/${action}`, { method: 'POST' });
         else await apiRequest(`/${apiModule}/${recordId}`, { method: 'PUT', body: JSON.stringify({ status: nextStatus }) });
         await queryClient.invalidateQueries({ queryKey: ['module', slug] });
+        if (slug === 'jobs') await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       } else if (slug === 'recycle-bin' && action === 'restore') {
         const entry = row._entry;
         const storedOriginals = localStorage.getItem(`tsg-demo-${entry.module}`);
