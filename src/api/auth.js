@@ -20,13 +20,23 @@ export async function loadProfile(authUser) {
   const client = requireSupabase();
   const { data, error } = await client
     .from('profiles')
-    .select('id,name,username,role,avatar,email,phone,is_active')
+    .select('id,name,username,role,avatar,email,phone,is_active,last_login')
     .eq('id', authUser.id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (data && data.is_active === false) {
     await client.auth.signOut();
     throw new Error('This account has been deactivated. Contact an administrator.');
+  }
+  const lastSignIn = authUser.last_sign_in_at;
+  if (data && lastSignIn) {
+    const stored = data.last_login ? new Date(data.last_login).getTime() : 0;
+    const latest = new Date(lastSignIn).getTime();
+    if (!stored || Math.abs(latest - stored) > 1000) {
+      client.from('profiles').update({ last_login: lastSignIn }).eq('id', authUser.id).then(({ error: updateError }) => {
+        if (updateError) console.warn('Unable to record last login:', updateError.message);
+      });
+    }
   }
   return toAppUser(data || {}, authUser);
 }
