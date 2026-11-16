@@ -181,8 +181,8 @@ async function rpc(name, args = {}) {
 function clean(payload) {
   return Object.fromEntries(
     Object.entries(payload || {})
-      .filter(([, value]) => value !== undefined)
-      .map(([key, value]) => [key, value === '' ? null : value]),
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => [key, value]),
   );
 }
 
@@ -200,6 +200,12 @@ function preparePayload(resource, payload) {
   const prepared = filterColumns(resource, payload);
   if (resource === 'machines' && !prepared.name) {
     prepared.name = [prepared.brand, prepared.model].filter(Boolean).join(' ') || prepared.machine_type || 'Machine';
+  }
+  if (resource === 'jobs') {
+    const assigned = Boolean(prepared.assigned_to || prepared.team_leader || (Array.isArray(prepared.assigned_employees) && prepared.assigned_employees.length));
+    if (assigned && (!prepared.status || /^(draft|new)$/i.test(prepared.status))) {
+      prepared.status = prepared.planned_start_date || prepared.planned_end_date ? 'Scheduled' : 'Assigned';
+    }
   }
   return prepared;
 }

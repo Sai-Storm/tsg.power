@@ -294,11 +294,13 @@ function normalizeList(payload, columns) {
     if (Array.isArray(record)) return record.map(normalizeCurrency);
     const values = columns.map(label => {
       if (label.toLowerCase() === 'items' && record?.items_display != null) return record.items_display == null ? '—' : normalizeCurrency(String(record.items_display));
+      const aliases = { customer: ['customer_name', 'name'], contact: ['contact_person', 'phone'], 'customer · machine': ['machine_name', 'title'], 'job order': ['number', 'job_number'], quotation: ['number', 'quotation_number'], invoice: ['number', 'invoice_number'], request: ['number', 'request_number'], voucher: ['voucher_no', 'number'], report: ['number', 'report_number'], 'assigned to': ['assigned_to_name', 'staff_name'], 'serial number': ['serial_no'], 'on hand': ['qty_on_hand'], 'reorder at': ['reorder_level'], 'valid until': ['valid_until'], 'due date': ['due_date'], 'last login': ['last_login'], 'created': ['created_at'], items: ['items_display'] };
+      const alias = aliases[label.toLowerCase()] || [];
+      const displayName = alias.filter(key => key.endsWith('_name')).map(key => record?.[key]).find(value => value != null);
+      if (displayName != null) return normalizeCurrency(String(displayName));
       const wanted = label.toLowerCase().replace(/[^a-z0-9]/g, '');
       const pair = Object.entries(record || {}).find(([key]) => key.toLowerCase().replace(/[^a-z0-9]/g, '') === wanted);
       if (pair) return pair[1] == null ? '—' : normalizeCurrency(String(pair[1]));
-      const aliases = { customer: ['customer_name', 'name'], contact: ['contact_person', 'phone'], 'customer · machine': ['machine_name', 'title'], 'job order': ['number', 'job_number'], quotation: ['number', 'quotation_number'], invoice: ['number', 'invoice_number'], request: ['number', 'request_number'], voucher: ['voucher_no', 'number'], report: ['number', 'report_number'], 'assigned to': ['assigned_to_name', 'staff_name'], 'serial number': ['serial_no'], 'on hand': ['qty_on_hand'], 'reorder at': ['reorder_level'], 'valid until': ['valid_until'], 'due date': ['due_date'], 'last login': ['last_login'], 'created': ['created_at'], items: ['items_display'] };
-      const alias = aliases[label.toLowerCase()] || [];
       const found = alias.map(key => record?.[key]).find(value => value != null);
       return found == null ? '—' : normalizeCurrency(String(found));
     });
@@ -312,7 +314,7 @@ function toApiRecord(columns, values) {
 }
 function toDisplayRow(columns, payload) {
   const aliases = { customer: ['customer_name', 'legal_name', 'customer_id', 'name'], supplier: ['supplier_name', 'name'], machine: ['machine_name', 'name', 'model'], location: ['site_location', 'billing_address', 'address'], asset: ['name'], item: ['name'], code: ['id', 'sku'], quotation: ['number', 'quotation_number'], 'job order': ['number', 'job_number', 'title'], invoice: ['number', 'invoice_number'], request: ['number', 'request_number'], voucher: ['voucher_no', 'number'], report: ['number', 'report_number'], 'customer · machine': ['machine_name', 'title'], contact: ['contact_person', 'phone'], 'due date': ['due_date'], 'serial number': ['serial_no'], amount: ['amount', 'total'], 'assigned to': ['assigned_to_name', 'assigned_to'] };
-  return columns.map(label => { const key = label.toLowerCase().replace(/[^a-z0-9]/g, ''); const keys = [key, ...(aliases[label.toLowerCase()] || [])]; const value = keys.map(name => payload?.[name] ?? payload?.[name.replace(/_([a-z])/g, (_, char) => char.toUpperCase())]).find(item => item != null && item !== ''); return value == null ? '—' : String(value); });
+  return columns.map(label => { const key = label.toLowerCase().replace(/[^a-z0-9]/g, ''); const alias = aliases[label.toLowerCase()] || []; const keys = [...alias.filter(name => name.endsWith('_name')), key, ...alias.filter(name => !name.endsWith('_name'))]; const value = keys.map(name => payload?.[name] ?? payload?.[name.replace(/_([a-z])/g, (_, char) => char.toUpperCase())]).find(item => item != null && item !== ''); return value == null ? '—' : String(value); });
 }
 function formatMoney(value) { return `MMK ${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`; }
 function nextSalaryVoucher() {

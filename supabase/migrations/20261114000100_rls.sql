@@ -76,13 +76,13 @@ create policy quotations_read on public.quotations
 create policy jobs_admin on public.jobs
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy jobs_staff_read on public.jobs
-  for select to authenticated using (public.is_job_member(id));
+  for select to authenticated using (public.is_job_member(id) or created_by = auth.uid());
 create policy jobs_staff_insert on public.jobs
   for insert to authenticated with check (true);
 create policy jobs_staff_update on public.jobs
   for update to authenticated
-  using (public.is_job_member(id))
-  with check (public.is_job_member(id));
+  using (public.is_job_member(id) or created_by = auth.uid())
+  with check (public.is_job_member(id) or created_by = auth.uid());
 
 ------------------------------------------------------------------
 -- Service reports
