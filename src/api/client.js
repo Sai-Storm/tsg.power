@@ -398,6 +398,13 @@ async function deleteResource(resource, id, params) {
     await invokeAdmin('set-active', { user_id: id, is_active: false });
     return null;
   }
+  if (resource === 'notifications') {
+    let query = supabase.from('notifications').delete();
+    query = id ? query.eq('id', id) : query.not('id', 'is', null);
+    const { error } = await query;
+    if (error) throw new Error(errorMessage(error));
+    return null;
+  }
   if (resource === 'recycle-bin') {
     await rpc('purge_recycle_entry', { p_id: id });
     return null;
