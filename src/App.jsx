@@ -1146,6 +1146,58 @@ function ReportsPage({ user, notify }) {
 const documentLabels = { invoices: 'invoice', customers: 'customer report', jobs: 'job order', 'service-reports': 'service report', 'my-expense-claims': 'expense voucher', salary: 'salary slip', 'my-salary': 'salary slip' };
 function documentLabel(module) { return documentLabels[module] || 'record'; }
 function canPrintDocument(module, row) { return ['invoices', 'customers', 'jobs', 'service-reports', 'my-expense-claims'].includes(module) || (['salary', 'my-salary'].includes(module) && /^paid$/i.test(String(row?.[5] || ''))); }
+function humanizeKey(key) { return String(key || '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim().replace(/^./, char => char.toUpperCase()); }
+function printableValue(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return '';
+    if (/^data:[^,]*,/i.test(text) && text.length > 120) return '[attachment]';
+    if ((text.startsWith('[') || text.startsWith('{')) && text.length > 1) {
+      try { return printableValue(JSON.parse(text)); } catch { return text; }
+    }
+    return text;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.map(item => printableValue(item)).filter(Boolean).join('\n');
+  if (typeof value === 'object') {
+    const name = value.description ?? value.name ?? value.item_name ?? value.item ?? value.title;
+    const qty = value.qty ?? value.quantity;
+    const unit = value.unit ?? value.uom;
+    const price = value.unit_price ?? value.price ?? value.rate;
+    if (name != null && (qty != null || price != null)) {
+      const parts = [String(name)];
+      if (qty != null && qty !== '') parts.push(`${printableValue(qty)}${unit ? ` ${unit}` : ''}`);
+      if (price != null && price !== '') parts.push(printableValue(price));
+      Object.entries(value).forEach(([key, entry]) => {
+        if (['description', 'name', 'item_name', 'item', 'title', 'qty', 'quantity', 'unit', 'uom', 'unit_price', 'price', 'rate'].includes(key)) return;
+        if (entry == null || entry === '' || entry === 0 || entry === false) return;
+        parts.push(`${humanizeKey(key)}: ${printableValue(entry)}`);
+      });
+      return parts.join(' — ');
+    }
+    const entries = Object.entries(value).filter(([, entry]) => entry != null && entry !== '');
+    return entries.map(([key, entry]) => `${humanizeKey(key)}: ${printableValue(entry)}`).join(' · ');
+  }
+  return String(value);
+}
+function schedulePrint(win) {
+  if (!win) return;
+  let printed = false;
+  const run = () => {
+    if (printed) return;
+    printed = true;
+    try { win.focus(); win.print(); } catch { /* the page still offers a print button */ }
+  };
+  const images = Array.from(win.document.images || []);
+  const pending = images.filter(image => !image.complete);
+  if (!pending.length) { setTimeout(run, 300); return; }
+  let remaining = pending.length;
+  const settle = () => { remaining -= 1; if (remaining <= 0) setTimeout(run, 200); };
+  pending.forEach(image => { image.addEventListener('load', settle, { once: true }); image.addEventListener('error', settle, { once: true }); });
+  setTimeout(run, 3000);
+}
 function printRecordDocument(module, row, columns) {
   let record = row?._record || {};
   if (module === 'service-reports' && !Object.keys(record).length) { try { record = JSON.parse(localStorage.getItem('tsg-demo-service-report-records') || '[]').find(item => item.number === row?.[0]) || {}; } catch { record = {}; } }
@@ -1161,10 +1213,11 @@ function printRecordDocument(module, row, columns) {
     return '';
   };
   const esc = value => String(value ?? '?').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
-  const pretty = value => Array.isArray(value) ? value.map(item => typeof item === 'object' ? Object.values(item).filter(Boolean).join(' / ') : item).join(', ') : typeof value === 'object' && value ? Object.values(value).filter(Boolean).join(', ') : String(value ?? '?');
-  const pair = (label, value) => `<div class="pair"><span>${esc(label)}</span><b>${esc(pretty(value) || '?')}</b></div>`;
+  const pretty = value => printableValue(value);
+  const rich = value => esc(pretty(value) || '?').replaceAll('\n', '<br>');
+  const pair = (label, value) => `<div class="pair"><span>${esc(label)}</span><b>${rich(value)}</b></div>`;
   const section = (title, body) => `<section><h2>${esc(title)}</h2>${body}</section>`;
-  const rows = (items, headers) => `<table><thead><tr>${headers.map(item => `<th>${esc(item)}</th>`).join('')}</tr></thead><tbody>${items.map(item => `<tr>${item.map(cell => `<td>${esc(pretty(cell))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const rows = (items, headers) => `<table><thead><tr>${headers.map(item => `<th>${esc(item)}</th>`).join('')}</tr></thead><tbody>${items.map(item => `<tr>${item.map(cell => `<td>${rich(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   const logo = new URL('/tsg-logo.png', window.location.href).href;
   let title = documentLabel(module).toUpperCase(); let number = row?.[0] || 'Record'; let headerMeta = number; let content = '';
   if (module === 'invoices') {
@@ -1227,17 +1280,40 @@ function printRecordDocument(module, row, columns) {
   if (!win) return;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(number)} - ${esc(title)}</title><style>
     @page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#edf0f3;color:#233246;font:13px Arial,sans-serif}.sheet{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:16mm 16mm 18mm;position:relative}.head{display:flex;justify-content:space-between;align-items:center;min-height:25mm}.head img{width:60mm;height:21mm;object-fit:contain;object-position:left center}.head-right{text-align:right}.head-right h1{font-size:23px;margin:0 0 7px;letter-spacing:.035em;color:#19283a}.head-right small{font-size:11px;color:#69788a}.rule{height:3px;background:#e59a1a;margin:3mm 0 8mm}.grid{display:grid;grid-template-columns:1fr 1fr;column-gap:10mm;row-gap:9px}.pair{display:grid;grid-template-columns:38mm 1fr;gap:4mm;min-height:19px;align-items:start}.pair span{font-size:11px;color:#68788c;text-transform:capitalize}.pair b{font-size:12px;font-weight:500;line-height:1.4;color:#233246;overflow-wrap:anywhere}.pair b:empty:after{content:'?';color:#7a8490}section{margin:0 0 18px}section h2{font-size:15px;margin:0 0 10px;font-weight:700;color:#1d2c40;padding-bottom:6px;border-bottom:1px solid #e8edf2}section p{font-size:12px;margin:0;white-space:pre-wrap;line-height:1.55;color:#405168}.invoice-parties{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-bottom:23px}.invoice-card{background:#f7f9fb;border:1px solid #e5eaf0;border-radius:8px;padding:14px 15px}.bill-to{border-left:3px solid #e59a1a}.kicker{display:block;font-size:10px;font-weight:700;letter-spacing:.12em;color:#718196;margin-bottom:9px}.bill-to h2{font-size:16px;margin:0 0 7px;color:#21334a}.bill-to p{font-size:12px;color:#53647a;line-height:1.45;margin:4px 0}.invoice-number{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #e2e8ef;padding-bottom:9px;margin-bottom:10px}.invoice-number span{font-size:10px;letter-spacing:.1em;color:#6d7c90;font-weight:700}.invoice-number b{font-size:13px;color:#24364c}.invoice-info .pair{grid-template-columns:30mm 1fr;min-height:21px}.invoice-status-row{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e2e8ef;padding-top:9px;margin-top:5px;font-size:11px;color:#68788c}.status-pill{display:inline-flex;padding:5px 9px;border-radius:20px;font-size:10px;font-weight:700}.is-paid{background:#e8f6ef;color:#20845b}.is-open{background:#fff4df;color:#9b6a08}table{width:100%;border-collapse:collapse;margin:5px 0 14px;font-size:11px}th{text-align:left;color:#52647a;font-weight:700;background:#f2f5f8;font-size:10px;letter-spacing:.035em}th,td{padding:10px 9px;border-bottom:1px solid #e6ebf0}td{overflow-wrap:anywhere;color:#34465d;line-height:1.35}td:not(:first-child),th:not(:first-child){text-align:right}.invoice-bottom{display:grid;grid-template-columns:1fr 82mm;gap:18px;align-items:start;margin:12px 0 22px}.payment-note{padding:12px 0;color:#43556a}.payment-note>b{display:block;font-size:12px;color:#263950;margin-bottom:7px}.payment-note>p{font-size:11px;line-height:1.5;color:#718096;margin:0 0 10px}.payment-note .pair{grid-template-columns:34mm 1fr;padding:3px 0}.invoice-totals{padding:12px 14px;background:#f7f9fb;border:1px solid #e5eaf0;border-radius:8px}.invoice-totals .pair{grid-template-columns:1fr auto;padding:5px 0}.grand-total,.balance-total{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid #dfe6ee;font-size:13px;font-weight:700}.grand-total b{font-size:16px;color:#21344c}.balance-total{margin:0 -14px -12px;padding:12px 14px;background:#173a61;color:#fff;border-radius:0 0 8px 8px}.balance-total b{font-size:16px}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:15mm;margin-top:28px;font-size:11px;color:#5d6d81}.foot{position:absolute;left:16mm;right:16mm;bottom:9mm;display:flex;justify-content:space-between;border-top:1px solid #e8edf2;padding-top:7px;color:#718096;font-size:10px}.foot:after{content:'Page 1'}@media print{body{background:#fff}.sheet{margin:0;box-shadow:none}section,table,tr,.invoice-parties,.invoice-bottom{break-inside:avoid}}
-  </style></head><body><main class="sheet"><header class="head"><img src="${esc(logo)}" alt="TSG Power Engineering"><div class="head-right"><h1>${esc(title)}</h1><small>${esc(headerMeta)}</small></div></header><div class="rule"></div>${content}<footer class="foot"><span>TSG Power Engineering Co., Ltd.</span></footer></main><script>window.onload=()=>{const logo=document.querySelector('.head img');if(logo.complete)window.print();else logo.onload=()=>window.print()}</script></body></html>`);
+  </style></head><body><main class="sheet"><header class="head"><img src="${esc(logo)}" alt="TSG Power Engineering"><div class="head-right"><h1>${esc(title)}</h1><small>${esc(headerMeta)}</small></div></header><div class="rule"></div>${content}<footer class="foot"><span>TSG Power Engineering Co., Ltd.</span></footer></main></body></html>`);
   win.document.close();
+  schedulePrint(win);
 }
 
 function printReport(title, columns, rows, filters) {
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-  const win = window.open('', '_blank', 'width=1000,height=760');
-  if (!win) return;
-  const filterText = Object.entries(filters).map(([key,value]) => `${escape(key)}: ${escape(value)}`).join(' ? ') || 'No filters';
-  win.document.write(`<!doctype html><html><head><title>TSG-${escape(title)}</title><style>@page{size:A4 landscape;margin:14mm}body{font:14px Arial,sans-serif;color:#233044}header{display:flex;align-items:center;gap:18px;border-bottom:3px solid #e59a1a;padding-bottom:14px;margin-bottom:20px}header img{width:180px;max-height:62px;object-fit:contain}h1{font-size:24px;margin:0 0 6px}.meta{color:#64748b;font-size:12px;line-height:1.5}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #d7dee8;padding:9px;text-align:left}th{background:#edf3fa;font-size:11px;letter-spacing:.04em}td{font-size:12px;line-height:1.4}tr{break-inside:avoid}footer{margin-top:18px;color:#64748b;font-size:11px}@media print{thead{display:table-header-group}}</style></head><body><header><img src="/tsg-logo.png" alt="TSG Power"><div><h1>${escape(title)}</h1><div class="meta">TSG Power Engineering | ${new Date().toLocaleString()}</div><div class="meta">Filters: ${filterText} | ${rows.length} records</div></div></header><table><thead><tr>${columns.map(column => `<th>${escape(column)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${escape(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table><footer>Generated from the current report result. Use the browser print dialog to print or save as PDF.</footer><script>window.onload=()=>window.print()</script></body></html>`);
+  const cell = value => { const text = printableValue(value); return text ? escape(text).replaceAll('\n', '<br>') : '—'; };
+  const win = window.open('', '_blank', 'width=1100,height=800');
+  if (!win) { window.alert('Please allow pop-ups for this site to export the PDF.'); return; }
+  const filterText = Object.entries(filters).map(([key, value]) => `${humanizeKey(key)}: ${escape(value)}`).join(' · ') || 'No filters applied';
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escape(title)} - TSG Power Engineering</title><style>
+    @page{size:A4 landscape;margin:10mm}
+    *{box-sizing:border-box}
+    body{margin:0;background:#fff;color:#1f2d3d;font:12px/1.45 Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px 14px;background:#f4f7fa;border-bottom:1px solid #e2e8ef}
+    .toolbar button{font:600 12px Arial,sans-serif;padding:8px 14px;border:1px solid #1769e0;background:#1769e0;color:#fff;border-radius:6px;cursor:pointer}
+    .sheet{padding:16px 18px 22px}
+    header{display:flex;align-items:center;gap:18px;border-bottom:3px solid #e59a1a;padding-bottom:12px;margin-bottom:16px}
+    header img{width:150px;max-height:54px;object-fit:contain}
+    h1{font-size:21px;margin:0 0 5px;text-transform:capitalize;color:#19283a}
+    .meta{color:#64748b;font-size:10.5px;line-height:1.55}
+    table{width:100%;border-collapse:collapse;margin-top:6px;table-layout:auto}
+    th,td{border:1px solid #d7dee8;padding:7px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+    th{background:#edf3fa;font-size:9.5px;letter-spacing:.03em;text-transform:uppercase;color:#33475d}
+    td{font-size:10.5px;line-height:1.45}
+    tbody tr:nth-child(even){background:#fafcfe}
+    tr{break-inside:avoid;page-break-inside:avoid}
+    footer{margin-top:14px;color:#7a8796;font-size:9.5px;display:flex;justify-content:space-between;gap:12px}
+    @media print{.toolbar{display:none}.sheet{padding:0}thead{display:table-header-group}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div><main class="sheet"><header><img src="${escape(new URL('/tsg-logo.png', window.location.href).href)}" alt="TSG Power Engineering"><div><h1>${escape(title)}</h1><div class="meta">TSG Power Engineering · Generated ${escape(new Date().toLocaleString())}</div><div class="meta">Filters: ${filterText} · ${rows.length} record${rows.length === 1 ? '' : 's'}</div></div></header><table><thead><tr>${columns.map(column => `<th>${escape(humanizeKey(column))}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${row.map(value => `<td>${cell(value)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${columns.length}">No records match these filters.</td></tr>`}</tbody></table><footer><span>Generated from the current report result.</span><span>TSG Power Engineering Co., Ltd.</span></footer></main></body></html>`);
   win.document.close();
+  schedulePrint(win);
 }
 
 function Status({ value }) { const val = value.toLowerCase().replaceAll(' ', '-'); const tone = /completed|approved|paid|active|in-stock|received/.test(val) ? 'green' : /overdue|rejected|low-stock/.test(val) ? 'red' : /scheduled|sent|submitted|open|partially-paid/.test(val) ? 'blue' : /waiting|pending|draft|unpaid/.test(val) ? 'amber' : 'gray'; return <span className={`status-badge ${tone}`}><i />{value}</span>; }

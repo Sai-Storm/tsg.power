@@ -555,16 +555,94 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+function humanizeKey(key) {
+  return String(key || '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim().replace(/^./, char => char.toUpperCase());
+}
+
+function printableValue(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return '';
+    if (/^data:[^,]*,/i.test(text) && text.length > 120) return '[attachment]';
+    if ((text.startsWith('[') || text.startsWith('{')) && text.length > 1) {
+      try { return printableValue(JSON.parse(text)); } catch { return text; }
+    }
+    return text;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.map(item => printableValue(item)).filter(Boolean).join('\n');
+  if (typeof value === 'object') {
+    const name = value.description ?? value.name ?? value.item_name ?? value.item ?? value.title;
+    const qty = value.qty ?? value.quantity;
+    const unit = value.unit ?? value.uom;
+    const price = value.unit_price ?? value.price ?? value.rate;
+    if (name != null && (qty != null || price != null)) {
+      const parts = [String(name)];
+      if (qty != null && qty !== '') parts.push(`${printableValue(qty)}${unit ? ` ${unit}` : ''}`);
+      if (price != null && price !== '') parts.push(printableValue(price));
+      Object.entries(value).forEach(([key, entry]) => {
+        if (['description', 'name', 'item_name', 'item', 'title', 'qty', 'quantity', 'unit', 'uom', 'unit_price', 'price', 'rate'].includes(key)) return;
+        if (entry == null || entry === '' || entry === 0 || entry === false) return;
+        parts.push(`${humanizeKey(key)}: ${printableValue(entry)}`);
+      });
+      return parts.join(' — ');
+    }
+    const entries = Object.entries(value).filter(([, entry]) => entry != null && entry !== '');
+    return entries.map(([key, entry]) => `${humanizeKey(key)}: ${printableValue(entry)}`).join(' · ');
+  }
+  return String(value);
+}
+
+function schedulePrint(win) {
+  if (!win) return;
+  let printed = false;
+  const run = () => {
+    if (printed) return;
+    printed = true;
+    try { win.focus(); win.print(); } catch { /* the page still offers a print button */ }
+  };
+  const images = Array.from(win.document.images || []);
+  const pending = images.filter(image => !image.complete);
+  if (!pending.length) { setTimeout(run, 300); return; }
+  let remaining = pending.length;
+  const settle = () => { remaining -= 1; if (remaining <= 0) setTimeout(run, 200); };
+  pending.forEach(image => { image.addEventListener('load', settle, { once: true }); image.addEventListener('error', settle, { once: true }); });
+  setTimeout(run, 3000);
+}
+
 function printRows(rows, title) {
   const keys = rows.length ? Object.keys(rows[0]).filter(key => !['id', 'record'].includes(key) && !key.endsWith('_id') && !key.endsWith('_by') && key !== 'created_at' && key !== 'updated_at') : [];
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font:12px/1.45 Arial,sans-serif;margin:24px;color:#172033}h1{font-size:20px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cdd7e4;padding:6px 8px;text-align:left;vertical-align:top}th{background:#eef4fb}@media print{body{margin:0}}</style></head><body><h1>${escape(title)}</h1><p>Generated ${escape(new Date().toLocaleString())}</p><table><thead><tr>${keys.map(key => `<th>${escape(key.replaceAll('_', ' '))}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${keys.map(key => `<td>${escape(typeof row[key] === 'object' ? JSON.stringify(row[key]) : row[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
-  const win = window.open('', '_blank');
+  const cell = value => { const text = printableValue(value); return text ? escape(text).replaceAll('\n', '<br>') : '—'; };
+  const heading = String(title || 'report').replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escape(heading)} - TSG Power Engineering</title><style>
+    @page{size:A4 landscape;margin:10mm}
+    *{box-sizing:border-box}
+    body{margin:0;background:#fff;color:#1f2d3d;font:12px/1.45 Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px 14px;background:#f4f7fa;border-bottom:1px solid #e2e8ef}
+    .toolbar button{font:600 12px Arial,sans-serif;padding:8px 14px;border:1px solid #1769e0;background:#1769e0;color:#fff;border-radius:6px;cursor:pointer}
+    .sheet{padding:16px 18px 22px}
+    header{display:flex;align-items:center;gap:18px;border-bottom:3px solid #e59a1a;padding-bottom:12px;margin-bottom:16px}
+    header img{width:150px;max-height:54px;object-fit:contain}
+    h1{font-size:21px;margin:0 0 5px;text-transform:capitalize;color:#19283a}
+    .meta{color:#64748b;font-size:10.5px;line-height:1.55}
+    table{width:100%;border-collapse:collapse;margin-top:6px;table-layout:auto}
+    th,td{border:1px solid #d7dee8;padding:7px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+    th{background:#edf3fa;font-size:9.5px;letter-spacing:.03em;text-transform:uppercase;color:#33475d}
+    td{font-size:10.5px;line-height:1.45}
+    tbody tr:nth-child(even){background:#fafcfe}
+    tr{break-inside:avoid;page-break-inside:avoid}
+    footer{margin-top:14px;color:#7a8796;font-size:9.5px;display:flex;justify-content:space-between;gap:12px}
+    @media print{.toolbar{display:none}.sheet{padding:0}thead{display:table-header-group}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div><main class="sheet"><header><img src="${escape(new URL('/tsg-logo.png', window.location.href).href)}" alt="TSG Power Engineering"><div><h1>${escape(heading)}</h1><div class="meta">TSG Power Engineering · Generated ${escape(new Date().toLocaleString())}</div><div class="meta">${rows.length} record${rows.length === 1 ? '' : 's'}</div></div></header><table><thead><tr>${keys.map(key => `<th>${escape(humanizeKey(key))}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${keys.map(key => `<td>${cell(row[key])}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${keys.length || 1}">No records to export.</td></tr>`}</tbody></table><footer><span>Generated from the current report result.</span><span>TSG Power Engineering Co., Ltd.</span></footer></main></body></html>`;
+  const win = window.open('', '_blank', 'width=1100,height=800');
   if (!win) throw new Error('Allow pop-ups to export this report.');
+  win.document.open();
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 250);
+  schedulePrint(win);
 }
 
 export async function exportModule(module, format, filters = {}) {
