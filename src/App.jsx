@@ -298,7 +298,7 @@ function Dashboard({ user }) {
   const today = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
   const moneyText = (value, isMoney = true) => { if(value==null||value==='?')return '—'; if(typeof value==='number')return isMoney?`MMK ${value.toLocaleString('en-US',{maximumFractionDigits:0})}`:value.toLocaleString('en-US'); return String(value); };
   const formatDelta = delta => { if(delta==null)return demo?'Demo snapshot':'Change unavailable'; if(typeof delta==='object'){const change=delta.percent ?? delta.changePercent ?? delta.value;const direction=Number(change)<0?'down':'up';return Number.isFinite(Number(change))?`${Math.abs(Number(change))}% ${direction} vs previous period`:String(delta.label||'Compared with previous period');} return String(delta); };
-  const navActions = user.role === 'Admin' ? [['Create job order',BriefcaseIcon,'/jobs',true],['Manage staff',UsersIcon,'/staff'],['Open invoices',WalletIcon,'/invoices'],['Review claims',ReceiptTextIcon,'/cash-claims']] : [['My job orders',BriefcaseIcon,'/jobs'],['New service report',ClipboardIcon,'/service-reports',true],['Request material',PackageCheckIcon,'/material-requests',true],['Submit expense claim',ReceiptTextIcon,'/my-expense-claims',true],['Request advance',WalletIcon,'/my-advances',true]];
+  const navActions = user.role === 'Admin' ? [['Review job orders',BriefcaseIcon,'/jobs'],['Manage staff',UsersIcon,'/staff'],['Open invoices',WalletIcon,'/invoices'],['Review claims',ReceiptTextIcon,'/cash-claims']] : [['My job orders',BriefcaseIcon,'/jobs'],['New service report',ClipboardIcon,'/service-reports',true],['Request material',PackageCheckIcon,'/material-requests',true],['Submit expense claim',ReceiptTextIcon,'/my-expense-claims',true],['Request advance',WalletIcon,'/my-advances',true]];
   const showRowsState = (query, rows) => query.isLoading ? 'Loading records?' : query.isError ? 'Could not load records.' : rows.length ? '' : 'No records to show yet.';
   return <>
     <div className="page-heading dashboard-heading"><div><div className="eyebrow">{user.role==='Admin'?'COMPANY OVERVIEW':'YOUR WORKSPACE'}</div><h1>{user.role==='Admin'?'Operations Overview':'My work'}</h1><p>{user.role==='Admin'?'A clear view of service, finance and customer activity.':'Your assigned work and items needing attention.'}</p></div><div className="heading-actions"><span className="date-pill"><Clock3 size={15}/>{today}</span><button className="secondary-button" onClick={()=>window.print()}><Download size={15}/>Export overview</button></div></div>
@@ -559,7 +559,7 @@ function workflowActions(slug, row, columns, role) {
     if (status === 'issued') return [{ label: 'Record payment', action: 'record-payment' }];
   }
   if (slug === 'jobs' && statusIndex >= 0) {
-    if (['draft', 'new'].includes(status)) return role === 'Admin' ? [{ label: 'Submit for approval', action: 'status', status: 'Pending Approval' }, { label: 'Assign / schedule', action: 'assign-job' }] : [];
+    if (['draft', 'new'].includes(status)) return role === 'Staff' ? [{ label: 'Submit for approval', action: 'status', status: 'Pending Approval' }] : [];
     if (status === 'pending approval') return role === 'Admin' ? [{ label: 'Approve', action: 'status', status: 'Approved' }, { label: 'Cancel job', action: 'job-cancel' }] : [];
     if (status === 'approved') return role === 'Admin' ? [{ label: 'Assign / schedule', action: 'assign-job' }] : [];
     if (status === 'assigned' || status === 'scheduled') return [{ label: 'Start work', action: 'status', status: 'In Progress' }, { label: 'Add note', action: 'add-note' }];
@@ -611,7 +611,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
     if (dateIndex >= 0 && (dateFrom || dateTo)) { const date = new Date(row[dateIndex]); if (!Number.isNaN(date.valueOf())) { if (dateFrom && date < new Date(`${dateFrom}T00:00:00`)) return false; if (dateTo && date > new Date(`${dateTo}T23:59:59`)) return false; } }
     return true;
   });
-  const canCreate = user.role === 'Admin' ? !['notifications', 'recycle-bin', 'settings'].includes(slug) : ['customers', 'jobs', 'service-reports', 'material-requests', 'my-expense-claims', 'my-advances'].includes(slug);
+  const canCreate = user.role === 'Admin' ? !['jobs', 'notifications', 'recycle-bin', 'settings'].includes(slug) : ['customers', 'jobs', 'service-reports', 'material-requests', 'my-expense-claims', 'my-advances'].includes(slug);
   const canEdit = user.role === 'Admin' ? !['accounts', 'notifications', 'recycle-bin'].includes(slug) : (user.role === 'Staff' && !['my-advances', 'advances'].includes(slug) && ['customers', 'service-reports', 'material-requests', 'my-expense-claims'].includes(slug));
   const showDelete = user.role === 'Admin' ? !['accounts', 'notifications', 'recycle-bin', 'settings'].includes(slug) : user.role === 'Staff' && slug === 'customers';
   const showForceDelete = user.role === 'Admin' && !['accounts', 'notifications', 'recycle-bin', 'settings'].includes(slug);

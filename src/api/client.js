@@ -159,6 +159,54 @@ const REPORT_SOURCES = {
   'fixed-asset-register': 'fixed-assets',
 };
 
+const PRINT_COLUMNS = {
+  customers: ['name', 'code', 'contact', 'phone', 'email', 'location', 'status'],
+  suppliers: ['supplier', 'supplier_type', 'contact', 'phone', 'email', 'address', 'payment_terms', 'status'],
+  machines: ['machine', 'customer', 'type', 'brand', 'model', 'serial_no', 'capacity', 'capacity_unit', 'status', 'next_service_date'],
+  inventory: ['item', 'sku', 'category', 'specification', 'on_hand', 'reorder_at', 'stock_status', 'supplier_name'],
+  'fixed-assets': ['asset', 'code', 'category', 'purchased', 'cost', 'assigned_to_name', 'location', 'condition', 'status'],
+  quotations: ['number', 'customer', 'date', 'valid_until', 'job_type', 'amount', 'status', 'payment_terms'],
+  jobs: ['number', 'customer_machine', 'title', 'job_type', 'priority', 'status', 'assigned_to_name', 'due_date', 'job_amount', 'payment_terms'],
+  'service-reports': ['report', 'job_order', 'customer', 'delivered', 'prepared_by', 'customer_acceptance', 'status'],
+  'material-requests': ['request', 'job_order', 'requested_by', 'priority', 'date', 'items_display', 'status'],
+  invoices: ['number', 'customer', 'issued', 'due_date', 'amount', 'amount_received', 'status', 'payment_terms'],
+  'cash-claims': ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
+  expenses: ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
+  'my-expense-claims': ['voucher', 'category', 'job_order', 'date', 'amount', 'status', 'description'],
+  advances: ['advance', 'staff_name', 'issued', 'job_order', 'purpose', 'amount', 'claimed', 'balance', 'status'],
+  'my-advances': ['advance', 'issued', 'purpose', 'amount', 'claimed', 'balance', 'status'],
+  'cash-entries': ['number', 'type', 'date', 'account', 'counterparty', 'job_order', 'amount', 'method', 'status', 'description'],
+  staff: ['staff_member', 'employee_id', 'designation', 'phone', 'email', 'active_jobs', 'status'],
+  salary: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
+  'my-salary': ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
+  salaries: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
+  accounts: ['user', 'username', 'role', 'last_login', 'created', 'status'],
+  users: ['user', 'username', 'role', 'last_login', 'created', 'status'],
+  notifications: ['notification', 'details', 'received', 'related_to', 'status'],
+  settings: ['setting', 'current_value', 'last_updated_by', 'updated'],
+  'recycle-bin': ['module', 'record', 'deleted_by', 'deleted_date', 'deletion_mode'],
+};
+
+const PRINT_SKIP_KEY = /(^id$|_id$|_by$|^created_at$|^updated_at$|^deleted_at$|^avatar$|^attachments$|^documents$|^receipt_file$|^technician_signature$|^customer_signature$|^equipment_records$|^assigned_employees$|^materials$|^notes$|^is_active$|^password$|^record$|^access_token$|^refresh_token$)/;
+
+function printKeys(rows, resource) {
+  const available = rows.length ? Object.keys(rows[0]) : [];
+  const preferred = PRINT_COLUMNS[resource];
+  const base = preferred && preferred.length
+    ? preferred.filter(key => available.includes(key))
+    : available.filter(key => !PRINT_SKIP_KEY.test(key)).slice(0, 12);
+  const visible = rows.length
+    ? base.filter(key => rows.some(row => {
+        const value = row[key];
+        if (value == null || value === '') return false;
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'object') return Object.keys(value).length > 0;
+        return true;
+      }))
+    : base;
+  return visible.length ? visible : base;
+}
+
 function parsePath(path) {
   const raw = String(path || '');
   const [pathname, search = ''] = raw.split('?');
@@ -612,29 +660,31 @@ function schedulePrint(win) {
   setTimeout(run, 3000);
 }
 
-function printRows(rows, title) {
-  const keys = rows.length ? Object.keys(rows[0]).filter(key => !['id', 'record'].includes(key) && !key.endsWith('_id') && !key.endsWith('_by') && key !== 'created_at' && key !== 'updated_at') : [];
+function printRows(rows, title, resource) {
+  const keys = printKeys(rows, resource);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const cell = value => { const text = printableValue(value); return text ? escape(text).replaceAll('\n', '<br>') : '—'; };
   const heading = String(title || 'report').replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+  const landscape = keys.length > 6;
+  const compact = keys.length > 8;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escape(heading)} - TSG Power Engineering</title><style>
-    @page{size:A4 landscape;margin:10mm}
+    @page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:${landscape ? '9mm' : '12mm'}}
     *{box-sizing:border-box}
-    body{margin:0;background:#fff;color:#1f2d3d;font:12px/1.45 Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{margin:0;background:#fff;color:#1f2d3d;font:${compact ? '9.5px' : '11px'}/1.45 Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px 14px;background:#f4f7fa;border-bottom:1px solid #e2e8ef}
     .toolbar button{font:600 12px Arial,sans-serif;padding:8px 14px;border:1px solid #1769e0;background:#1769e0;color:#fff;border-radius:6px;cursor:pointer}
-    .sheet{padding:16px 18px 22px}
-    header{display:flex;align-items:center;gap:18px;border-bottom:3px solid #e59a1a;padding-bottom:12px;margin-bottom:16px}
-    header img{width:150px;max-height:54px;object-fit:contain}
-    h1{font-size:21px;margin:0 0 5px;text-transform:capitalize;color:#19283a}
-    .meta{color:#64748b;font-size:10.5px;line-height:1.55}
-    table{width:100%;border-collapse:collapse;margin-top:6px;table-layout:auto}
-    th,td{border:1px solid #d7dee8;padding:7px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
-    th{background:#edf3fa;font-size:9.5px;letter-spacing:.03em;text-transform:uppercase;color:#33475d}
-    td{font-size:10.5px;line-height:1.45}
+    .sheet{padding:14px 16px 20px}
+    header{display:flex;align-items:center;gap:18px;border-bottom:3px solid #e59a1a;padding-bottom:10px;margin-bottom:12px}
+    header img{width:130px;max-height:46px;object-fit:contain}
+    h1{font-size:${compact ? '18px' : '21px'};margin:0 0 4px;text-transform:capitalize;color:#19283a}
+    .meta{color:#64748b;font-size:${compact ? '9.5px' : '10.5px'};line-height:1.5}
+    table{width:100%;border-collapse:collapse;margin-top:4px;table-layout:auto}
+    th,td{border:1px solid #d7dee8;padding:${compact ? '5px 6px' : '7px 8px'};text-align:left;vertical-align:top;min-width:${compact ? '68px' : '90px'}}
+    td{overflow-wrap:anywhere;word-break:break-word}
+    th{background:#edf3fa;font-size:${compact ? '8.5px' : '9.5px'};letter-spacing:.02em;text-transform:uppercase;color:#33475d;white-space:normal;overflow-wrap:normal;word-break:normal;hyphens:none}
     tbody tr:nth-child(even){background:#fafcfe}
     tr{break-inside:avoid;page-break-inside:avoid}
-    footer{margin-top:14px;color:#7a8796;font-size:9.5px;display:flex;justify-content:space-between;gap:12px}
+    footer{margin-top:12px;color:#7a8796;font-size:9.5px;display:flex;justify-content:space-between;gap:12px}
     @media print{.toolbar{display:none}.sheet{padding:0}thead{display:table-header-group}}
   </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div><main class="sheet"><header><img src="${escape(new URL('/tsg-logo.png', window.location.href).href)}" alt="TSG Power Engineering"><div><h1>${escape(heading)}</h1><div class="meta">TSG Power Engineering · Generated ${escape(new Date().toLocaleString())}</div><div class="meta">${rows.length} record${rows.length === 1 ? '' : 's'}</div></div></header><table><thead><tr>${keys.map(key => `<th>${escape(humanizeKey(key))}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${keys.map(key => `<td>${cell(row[key])}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${keys.length || 1}">No records to export.</td></tr>`}</tbody></table><footer><span>Generated from the current report result.</span><span>TSG Power Engineering Co., Ltd.</span></footer></main></body></html>`;
   const win = window.open('', '_blank', 'width=1100,height=800');
@@ -653,7 +703,7 @@ export async function exportModule(module, format, filters = {}) {
   const result = await listResource(resource, params);
   const rows = result.items || [];
   if (format === 'pdf') {
-    printRows(rows, reportId ? reportId.replaceAll('-', ' ') : resource.replaceAll('-', ' '));
+    printRows(rows, reportId ? reportId.replaceAll('-', ' ') : resource.replaceAll('-', ' '), resource);
     return;
   }
   downloadCsv(rows, `${reportId || resource}.csv`);
