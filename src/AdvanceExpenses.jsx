@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Paperclip, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
+import { ReceiptLink, looksLikeFile } from './Attachments.jsx';
 import './advance.css';
 
 // Staff record what they spend from an advance as drafts (with receipts), keep
@@ -138,7 +139,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
                 {!readOnly && <td className="advx-check">{draft && <input type="checkbox" aria-label={`Select ${entry.description}`} checked={selected.has(String(entry.id))} onChange={() => toggle(String(entry.id))} />}</td>}
                 <td className="advx-date">{shortDate(entry.date)}</td>
                 <td><b>{entry.description}</b><small>{[entry.category, entry.supplier_name, entry.number].filter(Boolean).join(' · ')}</small></td>
-                <td>{entry.receipt_file ? (/^https?:/i.test(entry.receipt_file) ? <a href={entry.receipt_file} target="_blank" rel="noreferrer" className="advx-receipt"><Paperclip size={13} />View</a> : <span className="advx-receipt"><Paperclip size={13} />Attached</span>) : <span className="advx-missing">Missing</span>}</td>
+                <td>{entry.receipt_file ? (looksLikeFile(entry.receipt_file) ? <ReceiptLink url={entry.receipt_file} name={`Receipt · ${entry.description || entry.number || ''}`} /> : <span className="advx-receipt"><Paperclip size={13} />Attached</span>) : <span className="advx-missing">Missing</span>}</td>
                 <td className="num">{money(entry.amount)}</td>
                 <td><span className={statusClass(entry.status)}>{entry.status}</span></td>
                 {!readOnly && <td className="advx-row-actions">{draft && canRecord && <><button className="row-action-button" disabled={busy} onClick={() => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || 'Materials', supplier_name: entry.supplier_name || '', description: entry.description || '', amount: String(num(entry.amount)), receipt_file: entry.receipt_file || '' }); }} aria-label="Edit draft"><Pencil size={13} /></button><button className="row-action-button danger" disabled={busy} onClick={() => deleteDraft(entry)} aria-label="Delete draft"><Trash2 size={13} /></button></>}</td>}

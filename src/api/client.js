@@ -282,6 +282,28 @@ async function uploadFile(file) {
   return data.publicUrl;
 }
 
+// Turn a stored attachment link into one the signed-in user can open. Works
+// whether the 'attachments' bucket is public or private (signed URL, 1 hour).
+const ATTACHMENT_PATH = /\/storage\/v1\/object\/(?:public|sign|authenticated)\/attachments\/([^?#]+)/;
+const signedCache = new Map();
+export function attachmentPath(url) {
+  const text = String(url || '').trim();
+  const match = text.match(ATTACHMENT_PATH);
+  if (match) return decodeURIComponent(match[1]);
+  if (text && !/^(https?:|data:|blob:)/i.test(text) && /\.[a-z0-9]{2,5}$/i.test(text) && text.includes('/')) return text;
+  return null;
+}
+export async function resolveAttachmentUrl(url) {
+  const path = attachmentPath(url);
+  if (!path || !supabase) return url;
+  const cached = signedCache.get(path);
+  if (cached && cached.expires > Date.now()) return cached.url;
+  const { data, error } = await supabase.storage.from('attachments').createSignedUrl(path, 3600);
+  if (error || !data?.signedUrl) return url;
+  signedCache.set(path, { url: data.signedUrl, expires: Date.now() + 50 * 60 * 1000 });
+  return data.signedUrl;
+}
+
 async function uploadFormData(form) {
   const payload = {};
   for (const [key, value] of form.entries()) {
