@@ -1,6 +1,7 @@
 import { supabase, requireSupabase } from './supabase.js';
 import { signInWithPassword } from './auth.js';
 import { openTableReport } from '../pdfTemplate.js';
+import { downloadXlsx, guessColumnType } from '../excel.js';
 
 const READ_VIEW = {
   customers: 'v_customers',
@@ -12,6 +13,7 @@ const READ_VIEW = {
   'material-requests': 'v_material_requests',
   suppliers: 'v_suppliers',
   invoices: 'v_invoices',
+  income: 'v_invoices',
   'cash-claims': 'v_expenses',
   'my-expense-claims': 'v_expenses',
   expenses: 'v_expenses',
@@ -88,7 +90,8 @@ const SEARCH_COLUMNS = {
   jobs: ['number', 'customer_machine', 'assigned_to_name', 'title'],
   'service-reports': ['report', 'job_order', 'customer', 'prepared_by'],
   'material-requests': ['request', 'job_order', 'requested_by', 'items_display'],
-  invoices: ['number', 'customer', 'status'],
+  invoices: ['number', 'customer', 'status', 'job_order'],
+  income: ['number', 'customer', 'status', 'job_order'],
   'cash-claims': ['reference', 'employee_source', 'description', 'job_order'],
   'my-expense-claims': ['voucher', 'description', 'job_order'],
   expenses: ['reference', 'employee_source', 'description', 'job_order'],
@@ -116,6 +119,7 @@ const FILTER_DATE = {
   'service-reports': { name: 'delivered' },
   'material-requests': { name: 'date' },
   invoices: { name: 'issued' },
+  income: { name: 'issued' },
   'cash-claims': { name: 'date' },
   'my-expense-claims': { name: 'date' },
   expenses: { name: 'date' },
@@ -165,7 +169,8 @@ const PRINT_COLUMNS = {
   jobs: ['number', 'customer_machine', 'title', 'job_type', 'priority', 'status', 'assigned_to_name', 'due_date', 'job_amount', 'payment_terms'],
   'service-reports': ['report', 'job_order', 'customer', 'delivered', 'prepared_by', 'customer_acceptance', 'status'],
   'material-requests': ['request', 'job_order', 'requested_by', 'priority', 'date', 'items_display', 'status'],
-  invoices: ['number', 'customer', 'issued', 'due_date', 'amount', 'amount_received', 'status', 'payment_terms'],
+  invoices: ['number', 'job_order', 'customer', 'issued', 'due_date', 'invoice_amount', 'received', 'outstanding', 'status', 'payment_terms'],
+  income: ['number', 'job_order', 'customer', 'issued', 'due_date', 'invoice_amount', 'received', 'outstanding', 'status', 'payment_terms'],
   'cash-claims': ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   expenses: ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   'my-expense-claims': ['voucher', 'category', 'job_order', 'date', 'amount', 'status', 'description'],
@@ -549,6 +554,7 @@ export async function apiRequest(path, options = {}) {
     if (resource === 'dashboard') return rpc('dashboard_summary');
     if (resource === 'reports') return { items: [] };
     if (resource === 'schedule') return rpc('team_schedule', { p_from: params.get('from'), p_to: params.get('to') });
+    if (resource === 'cash-board') return rpc('cash_board', { p_from: params.get('from'), p_to: params.get('to') });
     if (id) return getResource(resource, id);
     return listResource(resource, params);
   }
@@ -662,6 +668,20 @@ export async function exportModule(module, format, filters = {}) {
   const rows = result.items || [];
   if (format === 'pdf') {
     printRows(rows, reportId ? reportId.replaceAll('-', ' ') : resource.replaceAll('-', ' '), resource);
+    return;
+  }
+  if (format === 'xlsx') {
+    const keys = printKeys(rows, resource);
+    const headers = keys.map(humanizeKey);
+    const values = rows.map(row => keys.map(key => printableValue(row[key])));
+    const title = (reportId || resource).replace(/[_-]+/g, ' ').replace(/\w/g, char => char.toUpperCase());
+    downloadXlsx(`${reportId || resource}-${new Date().toISOString().slice(0, 10)}`, [{
+      name: title,
+      title: `TSG Power Engineering · ${title}`,
+      subtitle: `Exported ${new Date().toLocaleString()} · ${rows.length} record${rows.length === 1 ? '' : 's'}`,
+      columns: headers.map((header, index) => ({ header, type: guessColumnType(header, values.map(row => row[index])) })),
+      rows: values,
+    }]);
     return;
   }
   downloadCsv(rows, `${reportId || resource}.csv`);
