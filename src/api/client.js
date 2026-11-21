@@ -1,5 +1,6 @@
 import { supabase, requireSupabase } from './supabase.js';
 import { signInWithPassword } from './auth.js';
+import { openTableReport } from '../pdfTemplate.js';
 
 const READ_VIEW = {
   customers: 'v_customers',
@@ -57,14 +58,14 @@ const WRITE_TABLE = {
 
 const WRITE_COLUMNS = {
   customers: ['name', 'trading_name', 'customer_type', 'tax_number', 'contact_person', 'designation', 'phone', 'email', 'additional_contacts', 'billing_address', 'service_sites', 'payment_terms', 'credit_limit', 'status', 'notes'],
-  quotations: ['date', 'valid_until', 'customer_id', 'job_type', 'prepared_by', 'scope_of_work', 'items', 'tax_rate', 'advance_percent', 'payment_terms', 'terms', 'acceptance_evidence', 'subtotal', 'tax', 'total', 'status'],
+  quotations: ['date', 'valid_until', 'customer_id', 'attention', 'job_type', 'prepared_by', 'scope_of_work', 'items', 'tax_rate', 'advance_percent', 'payment_terms', 'terms', 'acceptance_evidence', 'subtotal', 'tax', 'total', 'status'],
   jobs: ['job_date', 'job_type', 'priority', 'status', 'department', 'customer_id', 'site_location', 'quotation_id', 'customer_approval', 'payment_terms', 'title', 'machine_id', 'equipment_type', 'equipment_model', 'serial_number', 'equipment_records', 'description', 'scope_of_work', 'expected_result', 'special_instructions', 'planned_start_date', 'planned_end_date', 'site_visit_date', 'team_leader', 'assigned_to', 'assigned_employees', 'assigned_vehicle', 'assignment_date', 'responsibilities', 'materials', 'job_amount', 'additional_charges', 'note', 'notes', 'cancellation_reason'],
   'service-reports': ['job_id', 'service_date', 'started_at', 'finished_at', 'technicians', 'customer_complaint', 'findings', 'work_done', 'parts_used', 'test_results', 'recommendations', 'attachments', 'customer_representative', 'customer_acceptance', 'acceptance_notes', 'technician_signature', 'customer_signature', 'status'],
   machines: ['name', 'customer_id', 'site_location', 'machine_type', 'brand', 'model', 'serial_no', 'capacity', 'capacity_unit', 'fuel_type', 'meter_hours', 'install_date', 'warranty_start', 'warranty_until', 'next_service_date', 'status', 'attachments'],
   inventory: ['sku', 'name', 'category', 'specification', 'unit', 'warehouse', 'supplier_id', 'reorder_level', 'cost_price', 'sell_price', 'status', 'attachments'],
   'material-requests': ['job_id', 'required_date', 'requester_id', 'priority', 'warehouse', 'items', 'note', 'status'],
   suppliers: ['name', 'supplier_type', 'tax_number', 'contact', 'phone', 'email', 'address', 'payment_terms', 'currency', 'bank_beneficiary', 'bank_name', 'bank_account', 'bank_verified', 'status', 'documents'],
-  invoices: ['customer_id', 'job_id', 'quotation_id', 'service_report_id', 'date', 'due_date', 'payment_terms', 'items', 'tax_rate', 'subtotal', 'tax', 'additional_charges', 'discount', 'total', 'amount_received', 'status'],
+  invoices: ['customer_id', 'attention', 'po_number', 'job_id', 'quotation_id', 'service_report_id', 'date', 'due_date', 'payment_terms', 'items', 'tax_rate', 'subtotal', 'tax', 'additional_charges', 'discount', 'total', 'amount_received', 'status'],
   expenses: ['category', 'office_type', 'job_id', 'supplier_id', 'supplier_name', 'employee_id', 'date', 'amount', 'currency', 'description', 'payment_source', 'advance_id', 'receipt_file', 'exception_reason', 'status', 'approved_by', 'approved_at', 'reimbursed_at'],
   advances: ['staff_id', 'job_id', 'date', 'due_date', 'amount', 'purpose', 'claimed', 'status', 'issued_on', 'issued_by', 'settled_at'],
   'cash-entries': ['type', 'date', 'account', 'reference_type', 'source_id', 'job_id', 'counterparty', 'amount', 'method', 'description', 'attachment', 'status', 'posted_at'],
@@ -643,56 +644,13 @@ function printableValue(value) {
   return String(value);
 }
 
-function schedulePrint(win) {
-  if (!win) return;
-  let printed = false;
-  const run = () => {
-    if (printed) return;
-    printed = true;
-    try { win.focus(); win.print(); } catch { /* the page still offers a print button */ }
-  };
-  const images = Array.from(win.document.images || []);
-  const pending = images.filter(image => !image.complete);
-  if (!pending.length) { setTimeout(run, 300); return; }
-  let remaining = pending.length;
-  const settle = () => { remaining -= 1; if (remaining <= 0) setTimeout(run, 200); };
-  pending.forEach(image => { image.addEventListener('load', settle, { once: true }); image.addEventListener('error', settle, { once: true }); });
-  setTimeout(run, 3000);
-}
-
 function printRows(rows, title, resource) {
   const keys = printKeys(rows, resource);
-  const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const cell = value => { const text = printableValue(value); return text ? escape(text).replaceAll('\n', '<br>') : '—'; };
-  const heading = String(title || 'report').replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-  const landscape = keys.length > 6;
-  const compact = keys.length > 8;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escape(heading)} - TSG Power Engineering</title><style>
-    @page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:${landscape ? '9mm' : '12mm'}}
-    *{box-sizing:border-box}
-    body{margin:0;background:#fff;color:#1f2d3d;font:${compact ? '9.5px' : '11px'}/1.45 Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px 14px;background:#f4f7fa;border-bottom:1px solid #e2e8ef}
-    .toolbar button{font:600 12px Arial,sans-serif;padding:8px 14px;border:1px solid #1769e0;background:#1769e0;color:#fff;border-radius:6px;cursor:pointer}
-    .sheet{padding:14px 16px 20px}
-    header{display:flex;align-items:center;gap:18px;border-bottom:3px solid #e59a1a;padding-bottom:10px;margin-bottom:12px}
-    header img{width:130px;max-height:46px;object-fit:contain}
-    h1{font-size:${compact ? '18px' : '21px'};margin:0 0 4px;text-transform:capitalize;color:#19283a}
-    .meta{color:#64748b;font-size:${compact ? '9.5px' : '10.5px'};line-height:1.5}
-    table{width:100%;border-collapse:collapse;margin-top:4px;table-layout:auto}
-    th,td{border:1px solid #d7dee8;padding:${compact ? '5px 6px' : '7px 8px'};text-align:left;vertical-align:top;min-width:${compact ? '68px' : '90px'}}
-    td{overflow-wrap:anywhere;word-break:break-word}
-    th{background:#edf3fa;font-size:${compact ? '8.5px' : '9.5px'};letter-spacing:.02em;text-transform:uppercase;color:#33475d;white-space:normal;overflow-wrap:normal;word-break:normal;hyphens:none}
-    tbody tr:nth-child(even){background:#fafcfe}
-    tr{break-inside:avoid;page-break-inside:avoid}
-    footer{margin-top:12px;color:#7a8796;font-size:9.5px;display:flex;justify-content:space-between;gap:12px}
-    @media print{.toolbar{display:none}.sheet{padding:0}thead{display:table-header-group}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div><main class="sheet"><header><img src="${escape(new URL('/tsg-logo.png', window.location.href).href)}" alt="TSG Power Engineering"><div><h1>${escape(heading)}</h1><div class="meta">TSG Power Engineering · Generated ${escape(new Date().toLocaleString())}</div><div class="meta">${rows.length} record${rows.length === 1 ? '' : 's'}</div></div></header><table><thead><tr>${keys.map(key => `<th>${escape(humanizeKey(key))}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${keys.map(key => `<td>${cell(row[key])}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${keys.length || 1}">No records to export.</td></tr>`}</tbody></table><footer><span>Generated from the current report result.</span><span>TSG Power Engineering Co., Ltd.</span></footer></main></body></html>`;
-  const win = window.open('', '_blank', 'width=1100,height=800');
-  if (!win) throw new Error('Allow pop-ups to export this report.');
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  schedulePrint(win);
+  openTableReport({
+    title: String(title || 'report'),
+    columns: keys.map(humanizeKey),
+    rows: rows.map(row => keys.map(key => printableValue(row[key]))),
+  });
 }
 
 export async function exportModule(module, format, filters = {}) {
