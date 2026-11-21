@@ -20,7 +20,6 @@ const READ_VIEW = {
   'fixed-assets': 'v_fixed_assets',
   staff: 'v_staff',
   salary: 'v_salaries',
-  'my-salary': 'v_salaries',
   salaries: 'v_salaries',
   accounts: 'v_profiles',
   users: 'v_profiles',
@@ -48,7 +47,6 @@ const WRITE_TABLE = {
   'fixed-assets': 'fixed_assets',
   staff: 'staff',
   salary: 'salaries',
-  'my-salary': 'salaries',
   salaries: 'salaries',
   accounts: 'profiles',
   users: 'profiles',
@@ -73,7 +71,6 @@ const WRITE_COLUMNS = {
   'fixed-assets': ['name', 'asset_tag', 'category', 'purchase_date', 'supplier_id', 'purchase_cost', 'residual_value', 'useful_life', 'depreciation_method', 'accumulated_depreciation', 'net_book_value', 'location', 'assigned_to', 'condition', 'status', 'warranty_until', 'attachments'],
   staff: ['name', 'phone', 'email', 'designation', 'join_date', 'salary', 'status', 'profile_id'],
   salary: ['staff_id', 'salary_month', 'basic_salary', 'allowances', 'deductions', 'paid_on', 'payment_method', 'status', 'notes'],
-  'my-salary': ['staff_id', 'salary_month', 'basic_salary', 'allowances', 'deductions', 'paid_on', 'payment_method', 'status', 'notes'],
   salaries: ['staff_id', 'salary_month', 'basic_salary', 'allowances', 'deductions', 'paid_on', 'payment_method', 'status', 'notes'],
   users: ['name', 'username', 'avatar', 'phone', 'role', 'is_active'],
   accounts: ['name', 'username', 'avatar', 'phone', 'role', 'is_active'],
@@ -99,7 +96,6 @@ const SEARCH_COLUMNS = {
   'cash-entries': ['number', 'counterparty', 'description'],
   staff: ['staff_member', 'employee_id', 'designation'],
   salary: ['voucher', 'staff_member'],
-  'my-salary': ['voucher', 'staff_member'],
   salaries: ['voucher', 'staff_member'],
   accounts: ['user', 'username', 'role'],
   users: ['user', 'username', 'role'],
@@ -127,7 +123,6 @@ const FILTER_DATE = {
   'cash-entries': { name: 'date' },
   staff: { name: 'created_at', timestamp: true },
   salary: { name: 'paid_on' },
-  'my-salary': { name: 'paid_on' },
   salaries: { name: 'paid_on' },
   accounts: { name: 'created', timestamp: true },
   users: { name: 'created', timestamp: true },
@@ -178,7 +173,6 @@ const PRINT_COLUMNS = {
   'cash-entries': ['number', 'type', 'date', 'account', 'counterparty', 'job_order', 'amount', 'method', 'status', 'description'],
   staff: ['staff_member', 'employee_id', 'designation', 'phone', 'email', 'active_jobs', 'status'],
   salary: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
-  'my-salary': ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
   salaries: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
   accounts: ['user', 'username', 'role', 'last_login', 'created', 'status'],
   users: ['user', 'username', 'role', 'last_login', 'created', 'status'],
@@ -420,12 +414,17 @@ async function updateSetting(id, payload) {
   return data;
 }
 
+// staff.salary is not selectable through the API (admin reads it via v_staff),
+// so writes to staff must not ask for it back.
+const STAFF_RETURN_COLUMNS = 'id,employee_id,name,phone,email,designation,join_date,status,profile_id,created_at,updated_at';
+const returnColumns = resource => (resource === 'staff' ? STAFF_RETURN_COLUMNS : '*');
+
 async function insertResource(resource, payload) {
   if (resource === 'users' || resource === 'accounts') return createAccount(payload);
   if (resource === 'settings') return saveSettings(payload);
   const table = WRITE_TABLE[resource] || resource;
   const prepared = preparePayload(resource, payload);
-  const { data, error } = await supabase.from(table).insert(prepared).select().single();
+  const { data, error } = await supabase.from(table).insert(prepared).select(returnColumns(resource)).single();
   if (error) throw new Error(errorMessage(error));
   return data;
 }
@@ -436,7 +435,7 @@ async function updateResource(resource, id, payload) {
   const table = WRITE_TABLE[resource] || resource;
   const prepared = preparePayload(resource, payload);
   if (!Object.keys(prepared).length) throw new Error('There are no changes to save.');
-  const { data, error } = await supabase.from(table).update(prepared).eq('id', id).select().maybeSingle();
+  const { data, error } = await supabase.from(table).update(prepared).eq('id', id).select(returnColumns(resource)).maybeSingle();
   if (error) throw new Error(errorMessage(error));
   if (resource === 'staff' && data?.profile_id) {
     const profileUpdates = filterColumns('users', { name: prepared.name, phone: prepared.phone });
@@ -548,6 +547,7 @@ export async function apiRequest(path, options = {}) {
   if (method === 'GET') {
     if (resource === 'dashboard') return rpc('dashboard_summary');
     if (resource === 'reports') return { items: [] };
+    if (resource === 'schedule') return rpc('team_schedule', { p_from: params.get('from'), p_to: params.get('to') });
     if (id) return getResource(resource, id);
     return listResource(resource, params);
   }

@@ -8,8 +8,8 @@ const area = (key, label, required = false, extra = {}) => ({ key, label, type: 
 const section = label => ({ key: `section-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, label, type: 'section' });
 const upload = (key, label, accept = 'image/*,.pdf', multiple = false, required = false) => ({ key, label, type: 'file', accept, multiple, required });
 
-const quotationStatuses = ['Draft', 'Pending Approval', 'Approved', 'Sent', 'Accepted', 'Rejected', 'Converted to Job'];
-const jobStatuses = ['Draft', 'New', 'Pending Approval', 'Approved', 'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Waiting for Parts', 'Completed', 'Invoice Generated', 'Closed - Paid', 'Closed - Pending Payment', 'Cancelled'];
+const quotationStatuses = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Converted to Job'];
+const jobStatuses = ['Draft', 'New', 'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Waiting for Parts', 'Completed', 'Invoice Generated', 'Closed - Paid', 'Closed - Pending Payment', 'Cancelled'];
 const serviceReportStatuses = ['Draft', 'Submitted', 'Reviewed', 'Approved', 'Rejected'];
 const invoiceStatuses = ['Draft', 'Pending Approval', 'Approved', 'Issued', 'Unpaid', 'Partially paid', 'Paid', 'Overdue', 'Cancelled', 'Void'];
 const salaryStatuses = ['Draft', 'Pending Approval', 'Approved', 'Paid'];
