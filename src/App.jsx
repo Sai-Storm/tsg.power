@@ -5,6 +5,7 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from
 import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Download, FileDown, Filter, LogOut, Menu, Moon, MoreHorizontal, Plus, Search, ShieldCheck, Sun, Trash2, Wrench, X, FileText as FileTextIcon } from 'lucide-react';
 import { apiRequest, exportModule } from './api/client.js';
 import { getCurrentUser, onAuthStateChange, signInWithGoogle, signInWithPassword, signOut as endSession } from './api/auth.js';
+import { isSupabaseConfigured } from './api/supabase.js';
 import { moduleInfo, navigation } from './data.js';
 import { emptyItems, emptyMaterials, emptyRequestItems, formSchemas } from './formSchemas.js';
 import TeamSchedule from './TeamSchedule.jsx';
@@ -48,6 +49,8 @@ function LoginNotice({ notice, onClose }) {
 
 function App() {
   const [user, setUser] = useState(initialUser);
+  // While Supabase restores the session (page reload, new tab, Google redirect) show a splash instead of flashing the login page.
+  const [authChecking, setAuthChecking] = useState(() => isSupabaseConfigured && !initialUser());
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [loginNotice, setLoginNotice] = useState(null);
@@ -101,9 +104,10 @@ function App() {
         sessionStorage.removeItem('tsg-login-pending');
         showLoginNotice('error', 'Google sign-in could not be completed. Please try again.');
       }
-    });
+    }).finally(() => { if (active) setAuthChecking(false); });
     const listener = onAuthStateChange((nextUser, event) => {
       if (!active) return;
+      setAuthChecking(false);
       if (event === 'SIGNED_OUT' || !nextUser) { sessionStorage.removeItem('tsg_user'); setUser(null); return; }
       sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
       setUser(nextUser);
@@ -111,6 +115,7 @@ function App() {
     return () => { active = false; listener.unsubscribe(); };
   }, []);
 
+  if (!user && authChecking) return <div className="login-screen" style={{ display: 'grid', placeItems: 'center' }} aria-busy="true"><img src="/tsg-mark.png" alt="TSG" style={{ width: 72, opacity: .9 }} /></div>;
   if (!user) return <><Login onLogin={login} onGoogleLogin={loginWithGoogle} onLoginError={message => showLoginNotice('error', message)} onClearLoginNotice={() => setLoginNotice(null)} /><LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} /></>;
   const currentPage = navigation.find(item => item.path === location.pathname)?.label || (location.pathname === '/reports' ? 'Reports' : location.pathname === '/cash-board' ? 'Cash board' : 'Dashboard');
   const matchingModules = navigation.filter(item => item.path && item.roles?.includes(user.role) && item.label.toLowerCase().includes(globalSearch.trim().toLowerCase())).slice(0, 6);
