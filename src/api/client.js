@@ -507,6 +507,9 @@ async function workflowRoute(resource, id, action, payload) {
   if (resource === 'advances') {
     if (action === 'issue') return rpc('issue_advance', { p_advance: id, p_payload: payload || {} });
     if (action === 'claim') return rpc('claim_advance', { p_advance: id, p_payload: payload || {} });
+    if (action === 'draft') return rpc('save_advance_draft', { p_advance: id, p_payload: payload || {} });
+    if (action === 'delete-draft') return rpc('delete_advance_draft', { p_expense: payload?.expense_id });
+    if (action === 'submit-drafts') return rpc('submit_advance_drafts', { p_advance: id, p_expenses: payload?.ids?.length ? payload.ids : null });
     if (action === 'settle') return rpc('settle_advance', { p_advance: id, p_amount: payload?.amount ?? 0 });
     if (action === 'approve') return rpc('set_advance_status', { p_advance: id, p_status: 'Approved' });
     if (action === 'reject') return rpc('set_advance_status', { p_advance: id, p_status: 'Rejected' });
@@ -555,6 +558,7 @@ export async function apiRequest(path, options = {}) {
     if (resource === 'reports') return { items: [] };
     if (resource === 'schedule') return rpc('team_schedule', { p_from: params.get('from'), p_to: params.get('to') });
     if (resource === 'cash-board') return rpc('cash_board', { p_from: params.get('from'), p_to: params.get('to') });
+    if (resource === 'advances' && id && action === 'expenses') return rpc('advance_expenses', { p_advance: id });
     if (id) return getResource(resource, id);
     return listResource(resource, params);
   }
