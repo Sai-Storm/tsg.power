@@ -862,3 +862,15 @@ html[data-theme="dark"] .profile-meta{color:#8ea5b9}
 .login-screen:before,.login-screen:after{display:none}
 .login-art,.login-art:before{background:transparent}
 .login-art-grid{display:none}
+
+/* Login: logo mark only ------------------------------------------------- */
+.login-center-logo{width:min(46%,300px);max-height:42vh;aspect-ratio:1}
+.mobile-login-mark{display:none}
+.login-mobile-logo{display:block;width:64px;height:64px;object-fit:contain;filter:brightness(0) invert(1) drop-shadow(0 6px 16px rgba(2,10,22,.3))}
+@media(max-width:900px){
+  .mobile-login-mark{display:flex;justify-content:center;margin:0 0 18px}
+}
+@media(max-width:650px){
+  .login-mobile-logo{width:56px;height:56px}
+  .mobile-login-mark{margin-bottom:16px}
+}
