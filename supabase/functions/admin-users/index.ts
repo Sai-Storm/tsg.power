@@ -37,10 +37,12 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    // New secret key (sb_secret_...) set as the TSG_SECRET_KEY function secret,
+    // so the legacy API keys can be switched off. Falls back to the legacy
+    // service role key until that secret is added.
+    const serviceKey = Deno.env.get('TSG_SECRET_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!supabaseUrl || !anonKey || !serviceKey) {
+    if (!supabaseUrl || !serviceKey) {
       return json(
         { error: 'Supabase environment is incomplete' },
         500
@@ -54,25 +56,6 @@ Deno.serve(async (req) => {
       return json({ error: 'Authentication required' }, 401);
     }
 
-    const caller = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    const {
-      data: userData,
-      error: userError,
-    } = await caller.auth.getUser();
-
-    if (userError || !userData.user) {
-      return json({ error: 'Not authenticated' }, 401);
-    }
-
     // Admin client: server-side operations only.
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: {
@@ -80,6 +63,17 @@ Deno.serve(async (req) => {
         persistSession: false,
       },
     });
+
+    // Who is calling? Checked here (not by the gateway), so it works with the
+    // new API keys.
+    const {
+      data: userData,
+      error: userError,
+    } = await admin.auth.getUser(authHeader.slice('Bearer '.length).trim());
+
+    if (userError || !userData.user) {
+      return json({ error: 'Not authenticated' }, 401);
+    }
 
     // Verify the caller's Admin role using the database.
     const {
@@ -177,6 +171,9 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
+        // Marks the account as registered by an administrator; the database
+        // refuses any other new account (see 20261201000000_admin_only_accounts).
+        app_metadata: { created_by_admin: true },
         user_metadata: {
           full_name: name,
           avatar_url: avatar,

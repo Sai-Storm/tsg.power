@@ -45,15 +45,15 @@ Deno.serve(async req => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const url = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  // New secret key (TSG_SECRET_KEY function secret); legacy key until it is set.
+  const serviceKey = (Deno.env.get('TSG_SECRET_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-  // Caller must be signed in (the cron job uses the service role key).
-  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  // Caller must be a signed-in user, or the scheduled job sending the secret key.
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return json({ error: 'Sign in required' }, 401);
   if (token !== serviceKey) {
-    const caller = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
-    const { data, error } = await caller.auth.getUser();
+    const { data, error } = await admin.auth.getUser(token);
     if (error || !data?.user) return json({ error: 'Sign in required' }, 401);
   }
 

@@ -5,7 +5,7 @@ import { supabase } from '../api/supabase.js';
 
 // The database version this build of the app expects (see schema_version() in
 // supabase/migrations). Bump it together with every new migration.
-export const REQUIRED_SCHEMA = '20261130000000';
+export const REQUIRED_SCHEMA = '20261201000000';
 
 /** Unread notifications for the signed-in user, kept live through Realtime. */
 export function useUnreadCount(user) {
@@ -51,7 +51,7 @@ export function useSchemaCheck(user) {
   const version = query.isError ? '' : String(query.data || '');
   if (version && version >= REQUIRED_SCHEMA) return null;
   return {
-    current: version || 'older than 20261130000000',
+    current: version || 'older than 20261201000000',
     required: REQUIRED_SCHEMA,
   };
 }

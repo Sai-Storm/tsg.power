@@ -25,10 +25,10 @@ additional_redirect_urls = [
   "http://127.0.0.1:5173/**"
 ]
 jwt_expiry = 3600
-enable_signup = true
+enable_signup = false   # only administrators create accounts
 
 [auth.email]
-enable_signup = true
+enable_signup = false   # only administrators create accounts
 enable_confirmations = false
 
 # Configure GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in your Supabase project
@@ -43,5 +43,10 @@ skip_nonce_check = false
 enabled = true
 file_size_limit = "50MiB"
 
+# The functions check the caller themselves; the gateway's JWT check only
+# understands the legacy API keys, which are switched off.
 [functions.admin-users]
-verify_jwt = true
+verify_jwt = false
+
+[functions.deliver-messages]
+verify_jwt = false

@@ -8,6 +8,11 @@ export function describeLoginError(message = '') {
   if (/invalid login credentials|invalid_credentials|invalid grant/i.test(text)) {
     return { kind: 'credentials', title: 'Wrong email or password', message: 'Check both and try again. If you forgot your password, ask your administrator to reset it.' };
   }
+  // Only administrators create accounts; Supabase reports a refused new
+  // account in one of these ways.
+  if (/TSG_NOT_REGISTERED|signups? not allowed|database error saving new user|user not found|not registered/i.test(text)) {
+    return { kind: 'account', title: 'Email not registered', message: 'This email does not have an account yet. Ask your administrator to create one for you, then sign in again.' };
+  }
   if (/deactivated|inactive|banned/i.test(text)) {
     return { kind: 'account', title: 'Account switched off', message: 'This account has been deactivated. Contact your administrator to turn it back on.' };
   }

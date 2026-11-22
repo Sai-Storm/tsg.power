@@ -9,8 +9,8 @@ select tests.ok('database reports its version', public.schema_version() >= '2026
 -- ---------------------------------------------------------------------------
 -- Fixtures: a finance user (who is also an employee) and an advance of theirs
 -- ---------------------------------------------------------------------------
-insert into auth.users (id, email, raw_user_meta_data) values
-  ('00000000-0000-0000-0000-0000000000f1', 'finance@test.local', '{"name":"Fin User","role":"Finance","username":"fin"}')
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
+  ('00000000-0000-0000-0000-0000000000f1', 'finance@test.local', '{"name":"Fin User","role":"Finance","username":"fin"}', '{"created_by_admin":true}')
 on conflict do nothing;
 insert into public.profiles (id, email, username, name, role) values
   ('00000000-0000-0000-0000-0000000000f1', 'finance@test.local', 'fin', 'Fin User', 'Finance')

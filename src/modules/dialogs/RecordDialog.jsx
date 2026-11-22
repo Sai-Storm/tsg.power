@@ -188,7 +188,7 @@ export default function RecordDialog({ dialog, columns, typedConfirm, setTypedCo
         <label>Full name<input value={account.name} onChange={e => setAccount({ ...account, name: e.target.value })} placeholder="Staff member name" /></label>
         <label>Email<input type="email" autoComplete="off" value={account.email} onChange={e => setAccount({ ...account, email: e.target.value })} placeholder="name@company.com" /></label>
         <label>Username<input autoComplete="off" value={account.username} onChange={e => setAccount({ ...account, username: e.target.value })} placeholder="Unique username" /></label>
-        <label>Role<select value={account.role} onChange={e => setAccount({ ...account, role: e.target.value })}><option>Staff</option><option>Finance</option><option>Admin</option></select></label>
+        <label>Role<select value={account.role} onChange={e => setAccount({ ...account, role: e.target.value })}><option>Staff</option><option>Admin</option></select></label>
         <label>Initial password<input type="password" autoComplete="new-password" value={account.password} onChange={e => setAccount({ ...account, password: e.target.value })} placeholder="At least 10 characters" /></label>
         <label className="wide-field">Profile picture<input type="file" accept="image/*" onChange={e => readPhoto(e.target.files?.[0], value => setAccount(old => ({ ...old, photo: value })), setPhotoError)} /><small>Optional. JPG, PNG or WebP up to 1.5 MB.</small></label>
         {account.photo && photoPreview(account.photo, 'Profile preview', () => setAccount({ ...account, photo: '' }))}

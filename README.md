@@ -126,7 +126,8 @@ Cloudflare deploys every push to `main`; check the GitHub Actions result before 
 | **Staff** | Own jobs, quotations, invoices, claims and advances. |
 
 Nobody can approve, release or settle **their own** advance or approve their own expenses; the
-database refuses it. Change a role in **Account management → … → Make Finance / Make Admin / Make Staff**.
+database refuses it. The role is chosen when an admin creates the account (Staff or Admin); finance
+work is done by Admin. There is no role switching in Account management.
 
 ## Database version check
 
@@ -159,7 +160,8 @@ Every notification can also be sent by email and/or Telegram to people who switc
 go by email. Messages are queued in `outbound_messages` and sent by the `deliver-messages` edge function.
 
 1. Deploy the function: `supabase functions deploy deliver-messages`
-2. Add secrets in Supabase (**Edge Functions → Secrets**), any of:
+2. Add secrets in Supabase (**Edge Functions → Secrets**): `TSG_SECRET_KEY` = your `sb_secret_…` key
+   (Project Settings → API Keys; needed by both functions), and any of:
    - `RESEND_API_KEY` and `ALERT_EMAIL_FROM` (e.g. `TSG Power <alerts@yourdomain.com>`) for email via resend.com
    - `TELEGRAM_BOT_TOKEN` from @BotFather for Telegram (each person presses **Start** on the bot once)
 3. Send the queue every 5 minutes (SQL Editor; needs the `pg_cron` and `pg_net` extensions):
@@ -168,7 +170,7 @@ go by email. Messages are queued in `outbound_messages` and sent by the `deliver
 select cron.schedule('tsg-deliver-messages', '*/5 * * * *', $$
   select net.http_post(
     url := 'https://<project-id>.supabase.co/functions/v1/deliver-messages',
-    headers := jsonb_build_object('Authorization', 'Bearer <service-role-key>', 'Content-Type', 'application/json'),
+    headers := jsonb_build_object('Authorization', 'Bearer <sb_secret_ key>', 'Content-Type', 'application/json'),
     body := '{}'::jsonb);
 $$);
 ```

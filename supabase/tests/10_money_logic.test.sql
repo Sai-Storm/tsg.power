@@ -55,10 +55,10 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- Fixtures: one admin, two staff, one customer, one job
 -- ---------------------------------------------------------------------------
-insert into auth.users (id, email, raw_user_meta_data) values
-  ('00000000-0000-0000-0000-0000000000a1', 'admin@test.local', '{"name":"Test Admin","role":"Admin","username":"tadmin"}'),
-  ('00000000-0000-0000-0000-0000000000b1', 'staff1@test.local', '{"name":"Staff One","role":"Staff","username":"staff1"}'),
-  ('00000000-0000-0000-0000-0000000000b2', 'staff2@test.local', '{"name":"Staff Two","role":"Staff","username":"staff2"}')
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
+  ('00000000-0000-0000-0000-0000000000a1', 'admin@test.local', '{"name":"Test Admin","role":"Admin","username":"tadmin"}', '{"created_by_admin":true}'),
+  ('00000000-0000-0000-0000-0000000000b1', 'staff1@test.local', '{"name":"Staff One","role":"Staff","username":"staff1"}', '{"created_by_admin":true}'),
+  ('00000000-0000-0000-0000-0000000000b2', 'staff2@test.local', '{"name":"Staff Two","role":"Staff","username":"staff2"}', '{"created_by_admin":true}')
 on conflict do nothing;
 
 insert into public.profiles (id, email, username, name, role) values
