@@ -1034,3 +1034,27 @@ html[data-theme="dark"] .toast-close:hover{background:rgba(255,255,255,.08);colo
 @media (max-width:650px){.toast{left:16px;right:16px;bottom:auto;top:14px;width:auto;margin:0 auto;max-width:440px;animation-name:toast-in-top}}
 @keyframes toast-in-top{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.toast{animation:none}}
+
+/* Sign-in success: animated tick over the dashboard, fades out by itself */
+.signin-success-layer{position:fixed;inset:0;z-index:95;display:grid;place-items:center;pointer-events:none;
+  background:radial-gradient(circle at center,rgba(6,18,44,.55),rgba(6,18,44,.25) 60%,transparent);
+  animation:signin-layer 1.8s ease forwards}
+.signin-success-card{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:250px;padding:28px 34px 24px;border-radius:22px;
+  color:#eef4ff;background:linear-gradient(180deg,rgba(24,44,86,.97),rgba(13,27,56,.97));border:1px solid rgba(255,255,255,.13);
+  box-shadow:0 30px 70px rgba(3,10,30,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  animation:signin-card 1.8s cubic-bezier(.2,.9,.3,1.2) forwards}
+.signin-success-card b{font-size:19px;font-weight:700;letter-spacing:-.01em;color:#fff;margin-top:6px}
+.signin-success-card span{font-size:14px;color:#b9c7e2}
+.signin-success-tick{width:70px;height:70px;border-radius:50%;background:rgba(76,214,160,.12);box-shadow:0 0 0 8px rgba(76,214,160,.07)}
+.signin-success-ring{stroke:#4cd6a0;stroke-width:3;stroke-dasharray:145;stroke-dashoffset:145;stroke-linecap:round;transform:rotate(-90deg);transform-origin:center;animation:signin-draw .55s ease-out .1s forwards}
+.signin-success-check{stroke:#4cd6a0;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:36;stroke-dashoffset:36;animation:signin-draw .35s ease-out .55s forwards}
+html[data-theme="light"] .signin-success-layer{background:radial-gradient(circle at center,rgba(17,35,59,.28),rgba(17,35,59,.08) 60%,transparent)}
+html[data-theme="light"] .signin-success-card{color:#1d2b3a;background:#fff;border-color:#e3e8ef;box-shadow:0 30px 70px rgba(17,35,59,.22)}
+html[data-theme="light"] .signin-success-card b{color:#11233b}
+html[data-theme="light"] .signin-success-card span{color:#5b6878}
+html[data-theme="light"] .signin-success-ring,html[data-theme="light"] .signin-success-check{stroke:#1b9a6c}
+html[data-theme="light"] .signin-success-tick{background:#e3f6ee;box-shadow:0 0 0 8px rgba(27,154,108,.08)}
+@keyframes signin-draw{to{stroke-dashoffset:0}}
+@keyframes signin-card{0%{opacity:0;transform:scale(.86)}14%{opacity:1;transform:scale(1)}80%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.96)}}
+@keyframes signin-layer{0%{opacity:0}10%{opacity:1}80%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.signin-success-layer,.signin-success-card{animation:signin-layer 1.8s steps(1,end) forwards}.signin-success-ring,.signin-success-check{animation:none;stroke-dashoffset:0}}

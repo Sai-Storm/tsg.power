@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowRight, Download, Eye, EyeOff, KeyRound, ShieldCheck, WifiOff, X } from 'lucide-react';
 
 // Server messages -> words people understand, with what to do next.
@@ -49,6 +50,32 @@ export function LoginNotice({ notice, onClose }) {
   );
 }
 LoginNotice.duration = NOTICE_MS;
+
+// Shown over the dashboard right after signing in: an animated tick and a
+// welcome line, then it fades away by itself (it never blocks clicks).
+const WELCOME_MS = 1800;
+export function SignInSuccess({ welcome, onDone }) {
+  useEffect(() => {
+    if (!welcome) return undefined;
+    const timer = window.setTimeout(onDone, WELCOME_MS);
+    return () => window.clearTimeout(timer);
+  }, [welcome, onDone]);
+  if (!welcome) return null;
+  // Rendered on <body> so no page layout can draw over it.
+  return createPortal(
+    <div key={welcome.id} className="signin-success-layer" role="status" aria-live="polite">
+      <div className="signin-success-card">
+        <svg className="signin-success-tick" viewBox="0 0 52 52" aria-hidden="true">
+          <circle className="signin-success-ring" cx="26" cy="26" r="23" fill="none" />
+          <path className="signin-success-check" fill="none" d="M15 27.5l7.5 7.5L37.5 19" />
+        </svg>
+        <b>Signed in</b>
+        <span>Welcome back, {welcome.name}</span>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 function useInstallPrompt() {
   const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;

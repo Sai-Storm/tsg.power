@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Bell, Check, ChevronRight, Info, DatabaseZap, LogOut, Menu, Moon, Search, ShieldCheck, Sun, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
@@ -6,7 +7,7 @@ import { getCurrentUser, onAuthStateChange, signInWithGoogle, signInWithPassword
 import { isSupabaseConfigured } from './api/supabase.js';
 import { navigation } from './data.js';
 import { AskHost } from './components/AskDialog.jsx';
-import Login, { LoginNotice } from './pages/Login.jsx';
+import Login, { LoginNotice, SignInSuccess } from './pages/Login.jsx';
 import { initials } from './lib/records.js';
 import { initialUser, oauthErrorFromUrl } from './lib/session.js';
 import { isAdminRole, isFinanceRole } from './lib/roles.js';
@@ -40,6 +41,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [loginNotice, setLoginNotice] = useState(null);
+  const [welcome, setWelcome] = useState(null);
   const [globalSearch, setGlobalSearch] = useState('');
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   const location = useLocation();
@@ -73,14 +75,21 @@ export default function App() {
     setLoginNotice({ id, message });
     window.setTimeout(() => setLoginNotice(current => (current?.id === id ? null : current)), LoginNotice.duration);
   };
-  const openDashboard = () => { setLoginNotice(null); navigate('/', { replace: true }); };
+  // After signing in: open the dashboard and show the success tick over it.
+  const openDashboard = signedIn => {
+    setLoginNotice(null);
+    navigate('/', { replace: true });
+    const name = String(signedIn?.name || '').trim().split(/\s+/)[0];
+    setWelcome({ id: Date.now(), name: name || 'there' });
+  };
+  const closeWelcome = useCallback(() => setWelcome(null), []);
   const login = async credentials => {
     const nextUser = await signInWithPassword(credentials.email, credentials.password);
     sessionStorage.removeItem('tsg_token');
     sessionStorage.removeItem('tsg_refresh_token');
     sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
     setUser(nextUser);
-    openDashboard();
+    openDashboard(nextUser);
   };
   const loginWithGoogle = async () => { sessionStorage.setItem('tsg-login-pending', 'google'); await signInWithGoogle(); };
   const logout = () => {
@@ -97,7 +106,7 @@ export default function App() {
   useEffect(() => {
     if (user && sessionStorage.getItem('tsg-login-pending') === 'google') {
       sessionStorage.removeItem('tsg-login-pending');
-      openDashboard();
+      openDashboard(user);
     }
   }, [user]);
   // Daily reminders and alerts (also scheduled in the database when pg_cron is
@@ -229,11 +238,12 @@ export default function App() {
         <footer className="page-footer"><span>© 2026 TSG Power Engineering</span><span>Secure operations <ShieldCheck size={13} /></span></footer>
       </div>
     </main>
+    <SignInSuccess welcome={welcome} onDone={closeWelcome} />
     <AskHost />
-    {toast && <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'} aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}>
+    {toast && createPortal(<div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'} aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}>
       <span className="toast-icon">{toast.tone === 'error' ? <AlertCircle size={17} /> : toast.tone === 'info' ? <Info size={17} /> : <Check size={17} />}</span>
       <span className="toast-text"><b>{toast.tone === 'error' ? 'Something needs attention' : toast.tone === 'info' ? 'Note' : 'Done'}</b><span>{toast.message}</span></span>
       <button type="button" className="toast-close" aria-label="Dismiss" onClick={() => setToast(null)}><X size={15} /></button>
-    </div>}
+    </div>, document.body)}
   </div>;
 }
