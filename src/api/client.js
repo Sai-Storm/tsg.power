@@ -18,6 +18,8 @@ const READ_VIEW = {
   expenses: 'v_expenses',
   advances: 'v_advances',
   'my-advances': 'v_advances',
+  'my-claims': 'v_expense_claims',
+  'staff-claims': 'v_expense_claims',
   'cash-entries': 'v_cash_entries',
   'fixed-assets': 'v_fixed_assets',
   staff: 'v_staff',
@@ -97,6 +99,8 @@ const SEARCH_COLUMNS = {
   expenses: ['reference', 'employee_source', 'description', 'job_order'],
   advances: ['advance', 'staff_name', 'purpose'],
   'my-advances': ['advance', 'purpose'],
+  'my-claims': ['claim', 'purpose', 'job_order'],
+  'staff-claims': ['claim', 'staff_name', 'purpose', 'job_order'],
   'cash-entries': ['number', 'counterparty', 'description'],
   staff: ['staff_member', 'employee_id', 'designation'],
   salary: ['voucher', 'staff_member'],
@@ -125,6 +129,8 @@ const FILTER_DATE = {
   expenses: { name: 'date' },
   advances: { name: 'issued' },
   'my-advances': { name: 'issued' },
+  'my-claims': { name: 'date' },
+  'staff-claims': { name: 'date' },
   'cash-entries': { name: 'date' },
   staff: { name: 'created_at', timestamp: true },
   salary: { name: 'paid_on' },
@@ -174,8 +180,10 @@ const PRINT_COLUMNS = {
   'cash-claims': ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   expenses: ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   'my-expense-claims': ['voucher', 'category', 'job_order', 'date', 'amount', 'status', 'description'],
-  advances: ['advance', 'type', 'staff_name', 'issued', 'job_order', 'purpose', 'amount', 'claimed', 'balance', 'status'],
-  'my-advances': ['advance', 'type', 'job_order', 'issued', 'purpose', 'amount', 'claimed', 'balance', 'status'],
+  advances: ['advance', 'staff_name', 'issued', 'job_order', 'purpose', 'amount', 'spent', 'balance', 'to_reimburse', 'status'],
+  'my-advances': ['advance', 'job_order', 'issued', 'purpose', 'amount', 'spent', 'balance', 'to_reimburse', 'status'],
+  'my-claims': ['claim', 'date', 'purpose', 'job_order', 'claimed', 'approved', 'paid', 'status'],
+  'staff-claims': ['claim', 'staff_name', 'date', 'job_order', 'purpose', 'claimed', 'approved', 'to_pay', 'status'],
   'cash-entries': ['number', 'type', 'date', 'account', 'counterparty', 'job_order', 'amount', 'method', 'status', 'description'],
   staff: ['staff_member', 'employee_id', 'designation', 'phone', 'email', 'active_jobs', 'status'],
   salary: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
@@ -392,6 +400,8 @@ async function listResource(resource, params) {
     const me = await currentUserId();
     if (me) query = query.eq('user_id', me);
   }
+  // "My" lists show only the signed-in person's rows (Finance can read everyone's).
+  if (resource === 'my-advances' || resource === 'my-claims') query = query.eq('is_mine', true);
 
   const status = params.get('status');
   if (status) query = query.ilike('status', status);

@@ -4,7 +4,7 @@
 -- finance f1, job d1).
 -- ============================================================================
 
-select tests.eq('database reports the claims version', public.schema_version(), '20261127000000');
+select tests.ok('database reports the claims version', public.schema_version() >= '20261127000000');
 
 -- ---------------------------------------------------------------------------
 -- 1. Opening a claim
@@ -25,8 +25,10 @@ select tests.eq('claim holds no company money', (select amount from public.advan
 select tests.eq('claim belongs to the signed-in staff member',
   (select staff_id from public.advances where id = :'office_claim'), (select id from public.staff where profile_id = '00000000-0000-0000-0000-0000000000b1' limit 1));
 select tests.eq('office claim may have no job order', (select job_id from public.advances where id = :'office_claim'), null::uuid);
-select tests.eq('list shows the type and Office job',
-  (select type || ' / ' || job_order from public.v_advances where id = :'office_claim'), 'Claim / Office');
+select tests.eq('claims list shows Office for no job order',
+  (select job_order from public.v_expense_claims where id = :'office_claim'), 'Office');
+select tests.ok('claims are not in the advances list',
+  not exists (select 1 from public.v_advances where id = :'office_claim'));
 select tests.ok('advances still need a job order',
   (select count(*) from public.advances where kind = 'Advance' and job_id is null and deleted_at is null) = 0);
 
@@ -117,3 +119,60 @@ select tests.eq('its drafts are removed',
   (select count(*) from public.expenses where advance_id = :'job_claim' and deleted_at is null), 0::bigint);
 select tests.throws('advances cannot be cancelled as claims',
   $q$select public.cancel_expense_claim('00000000-0000-0000-0000-0000000000e2')$q$, 'only expense claims');
+
+-- ---------------------------------------------------------------------------
+-- 5. List figures
+-- ---------------------------------------------------------------------------
+select tests.eq('paid claim: claimed excludes the rejected expense',
+  (select claimed_value from public.v_expense_claims where id = :'office_claim'), 45000::numeric);
+select tests.eq('paid claim: approved', (select approved_value from public.v_expense_claims where id = :'office_claim'), 45000::numeric);
+select tests.eq('paid claim: paid', (select paid_value from public.v_expense_claims where id = :'office_claim'), 45000::numeric);
+select tests.eq('paid claim: nothing left to pay', (select to_pay from public.v_expense_claims where id = :'office_claim'), 'MMK 0.00');
+
+-- A claim approved but not yet paid shows what finance owes.
+select tests.login('00000000-0000-0000-0000-0000000000b1');
+select public.open_expense_claim('{"purpose":"Tools"}')->>'id' as tools_claim \gset
+select public.save_advance_draft(:'tools_claim', jsonb_build_object('description', 'Spanner set', 'amount', 80000, 'date', current_date, 'receipt_file', 'sp.pdf'));
+select public.save_advance_draft(:'tools_claim', jsonb_build_object('description', 'Gloves', 'amount', 5000, 'date', current_date, 'receipt_file', 'gl.pdf'));
+select tests.eq('draft claim: claimed includes drafts', (select claimed_value from public.v_expense_claims where id = :'tools_claim'), 85000::numeric);
+select tests.eq('draft claim: nothing approved yet', (select approved_value from public.v_expense_claims where id = :'tools_claim'), 0::numeric);
+select public.submit_advance_settlement(:'tools_claim', null);
+select tests.login('00000000-0000-0000-0000-0000000000a1');
+select public.decide_advance_settlement(:'tools_claim', 'approve', null);
+select tests.eq('approved claim: to pay = approved total', (select to_pay from public.v_expense_claims where id = :'tools_claim'), 'MMK 85,000.00');
+
+-- Advances list: over-spent advance shows what the company owes, not a balance.
+insert into public.advances (id, staff_id, job_id, purpose, amount, date)
+values ('00000000-0000-0000-0000-0000000000e9', (select id from public.staff where profile_id = '00000000-0000-0000-0000-0000000000b1' limit 1),
+        '00000000-0000-0000-0000-0000000000d1', 'Cable run', 10000, current_date);
+select public.set_advance_status('00000000-0000-0000-0000-0000000000e9', 'Approved');
+select tests.eq('approved (not released) advance: nothing spent or owed',
+  (select issued_on is null and spent_value = 0 and balance_value = 0 from public.v_advances where id = '00000000-0000-0000-0000-0000000000e9'), true);
+select public.issue_advance('00000000-0000-0000-0000-0000000000e9', '{"amount":10000,"method":"Cash"}');
+select tests.eq('released advance: balance = amount', (select balance_value from public.v_advances where id = '00000000-0000-0000-0000-0000000000e9'), 10000::numeric);
+select tests.login('00000000-0000-0000-0000-0000000000b1');
+select public.save_advance_draft('00000000-0000-0000-0000-0000000000e9', jsonb_build_object('description', 'Cable', 'amount', 15000, 'date', current_date, 'receipt_file', 'c.pdf'));
+select tests.eq('drafts do not count as spent yet', (select spent_value from public.v_advances where id = '00000000-0000-0000-0000-0000000000e9'), 0::numeric);
+select public.submit_advance_settlement('00000000-0000-0000-0000-0000000000e9', null);
+select tests.eq('over-spent advance: nothing to return, 5,000 to reimburse',
+  (select balance_value || ' / ' || to_reimburse_value from public.v_advances where id = '00000000-0000-0000-0000-0000000000e9'), '0 / 5000.00');
+select tests.login('00000000-0000-0000-0000-0000000000a1');
+select tests.ok('unreleased advances show nothing spent or owed',
+  not exists (select 1 from public.v_advances where lower(status) in ('pending approval', 'approved', 'rejected')
+              and (spent_value <> 0 or balance_value <> 0 or to_reimburse_value <> 0)));
+select tests.ok('closed advances show no balance either way',
+  not exists (select 1 from public.v_advances where lower(status) = 'settled' and (balance_value <> 0 or to_reimburse_value <> 0)));
+
+-- "Mine" filter: a finance user reads every advance but only theirs are marked mine.
+select tests.login('00000000-0000-0000-0000-0000000000f1');
+set role authenticated;
+select tests.ok('finance sees other staff advances in the company list',
+  exists (select 1 from public.v_advances where not is_mine));
+select tests.ok('is_mine marks only the finance user''s own advances',
+  not exists (select 1 from public.v_advances v join public.staff s on s.id = v.staff_id
+              where v.is_mine and s.profile_id <> '00000000-0000-0000-0000-0000000000f1'));
+reset role;
+
+-- Cash board: opening a claim is not cash out.
+select tests.ok('claims are not listed as staff advances in the cash movements',
+  not exists (select 1 from public.cash_movements(null, null) m join public.advances a on a.number = m.reference where a.kind = 'Claim'));

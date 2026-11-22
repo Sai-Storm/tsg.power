@@ -36,7 +36,7 @@ const LIST_ALIASES = {
   request: ['number', 'request_number'], voucher: ['voucher_no', 'number'], report: ['number', 'report_number'],
   'assigned to': ['assigned_to_name', 'staff_name'], 'serial number': ['serial_no'], 'on hand': ['qty_on_hand'],
   'reorder at': ['reorder_level'], 'valid until': ['valid_until'], 'due date': ['due_date'], 'last login': ['last_login'],
-  created: ['created_at'], items: ['items_display'],
+  created: ['created_at'], items: ['items_display'], 'staff member': ['staff_name'], 'to return': ['balance'],
 };
 
 /**

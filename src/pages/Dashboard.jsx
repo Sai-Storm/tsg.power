@@ -32,7 +32,7 @@ const STAFF_ACTIONS = [
   ['New service report', ClipboardCheck, '/service-reports', true],
   ['Request material', PackageCheck, '/material-requests', true],
   ['Request advance', Wallet, '/my-advances', true],
-  ['Claim expenses', ReceiptText, '/my-advances', 'my-claim'],
+  ['Claim expenses', ReceiptText, '/my-claims', true],
 ];
 const FINANCE_ACTIONS = [
   ['Staff advances', Wallet, '/advances'],
@@ -61,7 +61,8 @@ export default function Dashboard({ user }) {
   ] : [
     { label: 'My assigned jobs', value: mine?.assignedJobs ?? 0, target: '/jobs', icon: BriefcaseBusiness, color: 'blue' },
     { label: "Today's schedule", value: mine?.todaysJobs ?? 0, target: '/jobs', icon: ClipboardCheck, color: 'violet' },
-    { label: 'Open advance balance', value: mine?.openAdvanceBalance ?? 0, target: '/my-advances', icon: Wallet, color: 'green' },
+    { label: 'Claims awaiting payment', value: mine?.claimsAwaitingPayment ?? 0, target: '/my-claims', icon: ReceiptText, color: 'amber' },
+    { label: 'Advance to return', value: mine?.openAdvanceBalance ?? 0, target: '/my-advances', icon: Wallet, color: 'green' },
     { label: 'Pending quotations', value: metric(['pendingQuotations', 'pending_quotations', 'quotations.pending']) ?? '—', target: '/quotations', icon: FileText, color: 'teal' },
   ];
   const actions = isAdmin ? ADMIN_ACTIONS : user.role === 'Finance' ? [...FINANCE_ACTIONS, ...STAFF_ACTIONS] : STAFF_ACTIONS;
@@ -95,7 +96,7 @@ export default function Dashboard({ user }) {
           <div className="panel-heading"><div><h2>Quick actions</h2><p>Common tasks</p></div></div>
           <div className="quick-links">
             {actions.map(([label, Icon, target, openCreate]) => (
-              <Link to={target} state={openCreate ? { openCreate: true, form: typeof openCreate === 'string' ? openCreate : target.replace(/^\//, '') } : undefined} key={label}>
+              <Link to={target} state={openCreate ? { openCreate: true, form: target.replace(/^\//, '') } : undefined} key={label}>
                 <span className="quick-icon"><Icon size={18} /></span><span>{label}</span><ArrowRight size={15} className="quick-arrow" />
               </Link>
             ))}

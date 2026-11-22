@@ -1,5 +1,5 @@
-// An employee's own numbers: assigned jobs, today's schedule
-// and open advance balance. Uses the dashboard summary when it has them and
+// An employee's own numbers: assigned jobs, today's schedule, claims waiting
+// to be paid and advance money still to return. Uses the dashboard summary when it has them and
 // counts from the lists otherwise (whichever is higher).
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '../../api/client.js';
@@ -14,6 +14,7 @@ export default function useMyWork(user, liveCounts, enabled) {
   const options = key => ({ queryKey: ['dashboard', key, user.id], enabled, staleTime: 20_000 });
   const staffQuery = useQuery({ ...options('my-staff'), queryFn: () => apiRequest('/staff?page=1&limit=500') });
   const jobsQuery = useQuery({ ...options('my-jobs'), queryFn: () => apiRequest('/jobs?page=1&limit=5000') });
+  const claimsQuery = useQuery({ ...options('my-claims'), queryFn: () => apiRequest('/my-claims?page=1&limit=5000') });
   const advancesQuery = useQuery({ ...options('my-advances'), queryFn: () => apiRequest('/my-advances?page=1&limit=5000') });
   if (!enabled) return null;
 
@@ -39,11 +40,19 @@ export default function useMyWork(user, liveCounts, enabled) {
   const openAdvance = lookupRecords('advances', advancesQuery.data)
     .filter(record => /issued|partially settled|under review|settlement approved/i.test(String(record?.status || '')))
     .reduce((sum, record) => sum + amountNumber(record?.balance), 0);
+  // Submitted claims wait for the manager; approved ones wait for finance.
+  const claimsAwaitingPayment = lookupRecords('claims', claimsQuery.data).reduce((sum, record) => {
+    const status = String(record?.status || '').toLowerCase();
+    if (status === 'under review') return sum + amountNumber(record?.claimed_value ?? record?.claimed);
+    if (status === 'settlement approved') return sum + Math.max(amountNumber(record?.approved_value ?? record?.approved) - amountNumber(record?.paid_value ?? record?.paid), 0);
+    return sum;
+  }, 0);
   const metric = (keys, fallback) => Math.max(Number(resolveDashboardMetric(liveCounts, keys) || 0), fallback);
 
   return {
     assignedJobs: metric(['myAssignedJobs', 'assignedJobs', 'assigned_jobs'], openJobs.length),
     todaysJobs: metric(['todaysScheduledJobs', 'scheduledToday', 'scheduled_today'], todayJobs.length),
+    claimsAwaitingPayment,
     openAdvanceBalance: metric(['myOpenAdvanceBalance', 'openAdvanceBalance', 'advance_balance'], openAdvance),
   };
 }

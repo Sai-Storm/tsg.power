@@ -89,15 +89,16 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
 
   const isAdmin = user.role === 'Admin';
   // Finance works like Admin on the money pages (the database limits which steps).
-  const manages = isAdmin || (user.role === 'Finance' && ['advances', 'cash-claims', 'income'].includes(slug));
+  const manages = isAdmin || (user.role === 'Finance' && ['advances', 'staff-claims', 'cash-claims', 'income'].includes(slug));
   const canCreate = manages
-    ? !['jobs', 'quotations', 'invoices', 'income', 'notifications', 'recycle-bin', 'settings'].includes(slug)
-    : ['customers', 'quotations', 'invoices', 'jobs', 'service-reports', 'material-requests', 'my-expense-claims', 'my-advances'].includes(slug);
+    ? !['jobs', 'quotations', 'invoices', 'income', 'notifications', 'recycle-bin', 'settings', 'staff-claims'].includes(slug)
+    : ['customers', 'quotations', 'invoices', 'jobs', 'service-reports', 'material-requests', 'my-claims', 'my-advances'].includes(slug);
   const canEdit = manages
-    ? !['accounts', 'notifications', 'recycle-bin', 'income'].includes(slug)
-    : ['customers', 'quotations', 'invoices', 'service-reports', 'material-requests', 'my-expense-claims'].includes(slug);
-  const showDelete = isAdmin ? !['accounts', 'notifications', 'recycle-bin', 'settings', 'income'].includes(slug) : slug === 'customers';
-  const showForceDelete = isAdmin && !['accounts', 'notifications', 'recycle-bin', 'settings', 'income'].includes(slug);
+    ? !['accounts', 'notifications', 'recycle-bin', 'income', 'staff-claims'].includes(slug)
+    : ['customers', 'quotations', 'invoices', 'service-reports', 'material-requests'].includes(slug);
+  // Claims are cancelled from inside the claim, not deleted from the list.
+  const showDelete = isAdmin ? !['accounts', 'notifications', 'recycle-bin', 'settings', 'income', 'staff-claims'].includes(slug) : slug === 'customers';
+  const showForceDelete = isAdmin && !['accounts', 'notifications', 'recycle-bin', 'settings', 'income', 'staff-claims'].includes(slug);
   const activeFilters = { ...(search ? { search } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(dateFrom ? { from: dateFrom } : {}), ...(dateTo ? { to: dateTo } : {}) };
 
   const refresh = async () => {
@@ -111,7 +112,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   };
 
   const create = (requestedForm = slug) => {
-    if (requestedForm === 'my-claim') return setDialog({ type: 'create', fields: formSchemas['my-claim'], apiResource: 'advance-claims', title: 'Claim expenses you paid', module: 'my-claim' });
+    if (requestedForm === 'my-claim' || requestedForm === 'my-claims') return setDialog({ type: 'create', fields: formSchemas['my-claim'], apiResource: 'advance-claims', title: 'Claim expenses you paid', module: 'my-claim' });
     const form = requestedForm === 'my-advances' ? 'my-advance' : requestedForm === 'advances' ? 'new-advance' : typeof requestedForm === 'string' ? requestedForm : slug;
     const accountMode = form === 'accounts';
     const apiResource = ({ 'cash-claims': 'expenses', 'new-advance': 'advances', 'my-advance': 'advances', 'cash-entry': 'cash-entries' })[form] || apiEndpoint(form);
@@ -322,11 +323,12 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
   const statusValues = [...new Set(rows.flatMap(row => row.filter(cellValue => isStatus(cellValue))))];
   const totalCount = Number(listQuery.data?.total ?? listQuery.data?.pagination?.total ?? visibleRows.length);
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const createLabel = { jobs: 'Create job order', customers: 'Create customer', 'my-advances': 'Request advance', advances: 'New advance', 'my-expense-claims': 'Submit expense claim' }[slug] || `Add ${info.title.replace(/s$/, '').toLowerCase()}`;
+  const createLabel = { jobs: 'Create job order', customers: 'Create customer', 'my-advances': 'Request advance', advances: 'New advance', 'my-claims': 'Claim expenses' }[slug] || `Add ${info.title.replace(/s$/, '').toLowerCase()}`;
   const accessNote = isAdmin ? 'Admin access · Changes are recorded in the audit log.'
     : manages ? 'Finance access · You release, pay and settle. Approvals stay with the manager.'
     : { customers: 'Staff access · You can manage customer records.', quotations: 'Staff access · You can prepare, issue and convert quotations.', invoices: 'Staff access · You can issue invoices and record customer payments.' }[slug]
       || 'Staff access · You can only view and update your assigned work.';
+  const ownMoneyPage = slug === 'my-advances' || slug === 'my-claims';
   const closeDialog = () => { setDialog(null); setTypedConfirm(''); };
   const confirmWith = payload => { Object.assign(dialog, payload); confirmAction(); };
 
@@ -351,7 +353,7 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
     if (!dialog) return null;
     const key = `${dialog.type}-${dialog.row?._id || dialog.row?.[0] || dialog.title || slug}`;
     if (['job-invoice', 'job-close', 'job-cancel'].includes(dialog.type)) return <JobFinanceDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
-    if (dialog.type === 'advance-expenses') return <AdvanceExpensesDialog key={key} row={dialog.row} columns={info.columns} readOnly={slug !== 'my-advances'} isAdmin={isAdmin && slug !== 'my-advances'} isFinance={slug !== 'my-advances' && isFinanceRole(user.role)} notify={notify} onClose={closeDialog} onChanged={() => { queryClient.invalidateQueries({ queryKey: ['module'] }); queryClient.invalidateQueries({ queryKey: ['dashboard'] }); }} />;
+    if (dialog.type === 'advance-expenses') return <AdvanceExpensesDialog key={key} row={dialog.row} columns={info.columns} readOnly={!ownMoneyPage} isAdmin={isAdmin && !ownMoneyPage} isFinance={!ownMoneyPage && isFinanceRole(user.role)} notify={notify} onClose={closeDialog} onChanged={() => { queryClient.invalidateQueries({ queryKey: ['module'] }); queryClient.invalidateQueries({ queryKey: ['dashboard'] }); }} />;
     if (dialog.type === 'staff-profile') return <StaffProfileDialog key={key} dialog={dialog} columns={info.columns} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'send-notification') return <SendNotificationDialog key={key} user={user} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'advance-issue') return <AdvanceIssueDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
@@ -366,7 +368,6 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
       {slug === 'advances' && manages && <Link className="secondary-button" to="/advance-overview"><BarChart3 size={15} />Advance overview</Link>}
       {slug === 'accounts' && isAdmin && <button className="secondary-button" onClick={() => setDialog({ type: 'my-account', user })}><ShieldCheck size={15} />My account</button>}
       {slug === 'notifications' && isAdmin && <button className="primary-button" onClick={() => setDialog({ type: 'send-notification', title: 'send' })}><Send size={16} />Send notification</button>}
-      {canCreate && slug === 'my-advances' && <button className="secondary-button" onClick={() => create('my-claim')}><ReceiptText size={15} />Claim expenses</button>}
       {canCreate && <button className="primary-button" onClick={() => create()}><Plus size={16} />{createLabel}</button>}
       {canCreate && slug === 'cash-claims' && <>
         <button className="secondary-button" onClick={() => create('cash-entry')}><Plus size={15} />Cash movement</button>
