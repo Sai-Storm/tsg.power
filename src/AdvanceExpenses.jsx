@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Briefcase, Check, CornerUpLeft, Paperclip, Pencil, Save, Send, Trash2, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { ReceiptLink, looksLikeFile } from './Attachments.jsx';
+import AdvanceTrend from './AdvanceTrend.jsx';
 import './advance.css';
 
 // One window for the whole life of a staff advance, always tied to its job order:
@@ -233,6 +234,8 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
             <div className="advx-bar" aria-hidden="true"><i className="approved" style={{ width: pct(approved) }} /><i className="submitted" style={{ width: pct(submitted) }} /><i className="drafts" style={{ width: pct(draftTotal) }} /></div>
             <p><b>{money(recorded)}</b> of {money(amount)} recorded</p>
           </div>}
+
+          <AdvanceTrend entries={entries} amount={amount} issuedOn={advance.issued_on} />
 
           <section className="advx-section">
             <h3>Expense records <small>{entries.length} item{entries.length === 1 ? '' : 's'}</small></h3>
