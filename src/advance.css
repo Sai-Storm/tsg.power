@@ -218,3 +218,16 @@ html[data-theme="dark"] .modal.advx-modal{--ax-series:#3987e5;--ax-series-soft:r
 .advx-table-view th{color:var(--ax-muted);font-size:13px}
 .advx-table-view .num{text-align:right;font-variant-numeric:tabular-nums}
 @media (max-width:720px){.advx-chart-grid{grid-template-columns:1fr}}
+
+/* Several receipts + camera */
+.advx-receipts-field{display:flex;flex-direction:column;gap:8px}
+.advx-field-label{font-size:14px;font-weight:700}
+.advx-receipt-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.modal.advx-modal .advx-receipt-buttons label.advx-btn{position:relative;cursor:pointer}
+.advx-receipt-buttons input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.advx-receipt-list{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none}
+.advx-receipt-list li{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;background:var(--ax-bg);border:1px solid var(--ax-line);font-size:14px}
+.advx-receipt-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.advx-receipt-list button{border:0;background:none;color:var(--ax-red);font-weight:700;cursor:pointer}
+.advx-receipts-field small{font-size:13px;color:var(--ax-muted)}
+.advx-item-receipt{display:flex;flex-wrap:wrap;gap:6px 12px}

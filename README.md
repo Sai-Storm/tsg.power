@@ -67,3 +67,19 @@ Use **Continue as Admin** or **Continue as Staff** to preview the demo workspace
 - Attachments are uploaded to the `attachments` Storage bucket and the public URL is stored on the record.
 
 The demo accounts use in-memory/localStorage records and do not authenticate against the backend.
+
+## Checks
+
+```sh
+npm run lint                 # ESLint
+npm run build                # production build
+npm run test:db -- --temp    # database tests in a throw-away PostgreSQL (needs PostgreSQL installed)
+DATABASE_URL=postgresql://user:pass@host:5432/postgres npm run test:db   # or against a server you choose
+```
+
+The database tests (`supabase/tests`) build a fresh database from every migration and check the
+money logic (advances, settlements, returns, reimbursements, cash board totals, job profitability)
+and the access rules (staff only see their own advances, claims and nothing of salaries or the cash book).
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, build and the database tests on every push.
+In Render, set **Auto-Deploy → After CI Checks Pass** so a failing commit is never deployed.

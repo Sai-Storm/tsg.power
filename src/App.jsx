@@ -1,57 +1,35 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Download, FileDown, Filter, LogOut, Menu, Moon, MoreHorizontal, Plus, Search, ShieldCheck, Sun, Trash2, Wrench, X, FileText as FileTextIcon } from 'lucide-react';
-import { apiRequest, exportModule } from './api/client.js';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { ArrowRight, Bell, Check, ChevronRight, LogOut, Menu, Moon, Search, ShieldCheck, Sun, X } from 'lucide-react';
+import { apiRequest } from './api/client.js';
 import { getCurrentUser, onAuthStateChange, signInWithGoogle, signInWithPassword, signOut as endSession } from './api/auth.js';
 import { isSupabaseConfigured } from './api/supabase.js';
-import { moduleInfo, navigation } from './data.js';
-import { emptyItems, emptyMaterials, emptyRequestItems, formSchemas } from './formSchemas.js';
-import TeamSchedule from './TeamSchedule.jsx';
-import CashBoard from './CashBoard.jsx';
-import AdvanceExpensesDialog from './AdvanceExpenses.jsx';
-import { AttachmentGallery, collectAttachments } from './Attachments.jsx';
-import * as pdf from './pdfTemplate.js';
+import { navigation } from './data.js';
+import { AskHost } from './components/AskDialog.jsx';
+import Login, { LoginNotice } from './pages/Login.jsx';
+import { initials } from './lib/records.js';
+import { initialUser, oauthErrorFromUrl } from './lib/session.js';
 
-const initialUser = () => { try { const saved = JSON.parse(sessionStorage.getItem('tsg_user') || 'null'); if (saved?.id?.startsWith('demo-')) { sessionStorage.removeItem('tsg_user'); return null; } return saved; } catch { return null; } };
-const initials = (name = '') => name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
-const accountAvatarKey = 'tsg-demo-account-avatars';
-const readAccountAvatars = () => { try { return JSON.parse(localStorage.getItem(accountAvatarKey) || '{}'); } catch { return {}; } };
-const accountAvatar = username => readAccountAvatars()[String(username || '').toLowerCase()] || '';
-const saveAccountAvatar = (username, photo) => { const avatars = readAccountAvatars(); const key = String(username || '').toLowerCase(); if (photo) avatars[key] = photo; else delete avatars[key]; try { localStorage.setItem(accountAvatarKey, JSON.stringify(avatars)); } catch { /* Storage full — keep the picture in the current session only. */ } };
-const rowAvatar = row => row?._record?.avatar || row?._record?.profile_picture || '';
+// App shell: sign-in, sidebar, top bar and routes. Each page is loaded only
+// when it is first opened, so the first visit downloads far less code.
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage.jsx'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
+const JobProfitability = lazy(() => import('./pages/JobProfitability.jsx'));
+const AdvanceOverview = lazy(() => import('./pages/AdvanceOverview.jsx'));
+const TeamSchedule = lazy(() => import('./TeamSchedule.jsx'));
+const CashBoard = lazy(() => import('./CashBoard.jsx'));
+const ModuleRoute = lazy(() => import('./modules/ModulePage.jsx'));
 
-function oauthErrorFromUrl() {
-  const query = new URLSearchParams(window.location.search);
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const description = query.get('error_description') || hash.get('error_description');
-  const code = query.get('error') || hash.get('error') || query.get('error_code') || hash.get('error_code');
-  if (!description && !code) return '';
-  const cleaned = new URL(window.location.href);
-  ['error', 'error_code', 'error_description'].forEach(key => cleaned.searchParams.delete(key));
-  const hashParams = new URLSearchParams(cleaned.hash.replace(/^#/, ''));
-  ['error', 'error_code', 'error_description'].forEach(key => hashParams.delete(key));
-  cleaned.hash = hashParams.toString() ? `#${hashParams.toString()}` : '';
-  window.history.replaceState({}, '', `${cleaned.pathname}${cleaned.search}${cleaned.hash}`);
-  if (description) return description;
-  if (code === 'access_denied') return 'Google sign-in was cancelled.';
-  return `Google sign-in could not be completed${code ? ` (${code})` : ''}. Please try again.`;
+const PAGE_TITLES = { '/reports': 'Reports', '/cash-board': 'Cash board', '/job-profitability': 'Job profitability', '/advance-overview': 'Advance overview' };
+
+function PageLoading() {
+  return <div className="page-loading" role="status" aria-live="polite"><span className="loading-bar"><span /></span>Loading…</div>;
 }
 
-function LoginNotice({ notice, onClose }) {
-  if (!notice) return null;
-  const success = notice.type === 'success';
-  return <div className={`login-alert ${success ? 'is-success' : ''}`} role={success ? 'status' : 'alert'} aria-live="polite">
-    <span className="login-alert-icon">{success ? <Check size={14} /> : '!'}</span>
-    <div className="login-alert-copy"><b>{success ? 'Login successful' : 'Login failed'}</b><span>{notice.message}</span></div>
-    <button type="button" aria-label="Dismiss message" onClick={onClose}><X size={16} /></button>
-  </div>;
-}
-
-function App() {
+export default function App() {
   const [user, setUser] = useState(initialUser);
-  // While Supabase restores the session (page reload, new tab, Google redirect) show a splash instead of flashing the login page.
+  // While Supabase restores the session (reload, new tab, Google redirect) show a splash instead of flashing the login page.
   const [authChecking, setAuthChecking] = useState(() => isSupabaseConfigured && !initialUser());
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
@@ -59,21 +37,27 @@ function App() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   const location = useLocation();
-  useEffect(() => { document.documentElement.dataset.theme = theme; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme === 'light' ? '#c6d9fb' : '#0a2353'); try { localStorage.setItem('tsg-theme', theme); } catch { /* Theme preference is session-only when storage is unavailable. */ } }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#c6d9fb' : '#0a2353');
+    try { localStorage.setItem('tsg-theme', theme); } catch { /* Theme preference is session-only when storage is unavailable. */ }
+  }, [theme]);
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const closeOnEscape = event => { if (event.key === 'Escape') setMenuOpen(false); };
     window.addEventListener('keydown', closeOnEscape);
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
   }, [menuOpen]);
+
   const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
   const showLoginNotice = (type, message) => {
     const id = Date.now();
     setLoginNotice({ id, type, message });
-    window.setTimeout(() => setLoginNotice(current => current?.id === id ? null : current), type === 'success' ? 4000 : 6000);
+    window.setTimeout(() => setLoginNotice(current => (current?.id === id ? null : current)), type === 'success' ? 4000 : 6000);
   };
   const login = async credentials => {
     const nextUser = await signInWithPassword(credentials.email, credentials.password);
@@ -84,28 +68,36 @@ function App() {
     showLoginNotice('success', `Welcome back, ${nextUser.name.split(' ')[0]}.`);
   };
   const loginWithGoogle = async () => { sessionStorage.setItem('tsg-login-pending', 'google'); await signInWithGoogle(); };
-  const logout = () => { endSession().catch(() => {}); sessionStorage.removeItem('tsg_user'); sessionStorage.removeItem('tsg_token'); sessionStorage.removeItem('tsg_refresh_token'); setUser(null); };
-  useEffect(() => { const sync = () => setUser(initialUser()); window.addEventListener('tsg-user-updated', sync); return () => window.removeEventListener('tsg-user-updated', sync); }, []);
-  useEffect(() => { if (user && sessionStorage.getItem('tsg-login-pending') === 'google') { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('success', `Welcome back, ${user.name.split(' ')[0]}.`); } }, [user]);
+  const logout = () => {
+    endSession().catch(() => {});
+    ['tsg_user', 'tsg_token', 'tsg_refresh_token'].forEach(key => sessionStorage.removeItem(key));
+    setUser(null);
+  };
+
+  useEffect(() => {
+    const sync = () => setUser(initialUser());
+    window.addEventListener('tsg-user-updated', sync);
+    return () => window.removeEventListener('tsg-user-updated', sync);
+  }, []);
+  useEffect(() => {
+    if (user && sessionStorage.getItem('tsg-login-pending') === 'google') {
+      sessionStorage.removeItem('tsg-login-pending');
+      showLoginNotice('success', `Welcome back, ${user.name.split(' ')[0]}.`);
+    }
+  }, [user]);
+  // Daily advance reminders (also scheduled in the database when pg_cron is on).
+  // Each reminder is sent at most once a day, so calling this on login is safe.
+  useEffect(() => { if (user?.role === 'Admin') apiRequest('/advances/reminders', { method: 'POST' }).catch(() => {}); }, [user?.id]);
   useEffect(() => {
     let active = true;
     const redirectError = oauthErrorFromUrl();
     const pendingGoogle = sessionStorage.getItem('tsg-login-pending') === 'google';
-    if (redirectError) {
-      sessionStorage.removeItem('tsg-login-pending');
-      showLoginNotice('error', redirectError);
-    }
+    if (redirectError) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('error', redirectError); }
     getCurrentUser().then(nextUser => {
       if (active && nextUser) { sessionStorage.setItem('tsg_user', JSON.stringify(nextUser)); setUser(nextUser); return; }
-      if (active && pendingGoogle && !redirectError) {
-        sessionStorage.removeItem('tsg-login-pending');
-        showLoginNotice('error', 'Google sign-in did not complete. Please try again.');
-      }
+      if (active && pendingGoogle && !redirectError) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('error', 'Google sign-in did not complete. Please try again.'); }
     }).catch(() => {
-      if (active && pendingGoogle) {
-        sessionStorage.removeItem('tsg-login-pending');
-        showLoginNotice('error', 'Google sign-in could not be completed. Please try again.');
-      }
+      if (active && pendingGoogle) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('error', 'Google sign-in could not be completed. Please try again.'); }
     }).finally(() => { if (active) setAuthChecking(false); });
     const listener = onAuthStateChange((nextUser, event) => {
       if (!active) return;
@@ -117,1197 +109,84 @@ function App() {
     return () => { active = false; listener.unsubscribe(); };
   }, []);
 
-  if (!user && authChecking) return <div className="login-screen" style={{ display: 'grid', placeItems: 'center' }} aria-busy="true"><img src="/tsg-mark.png" alt="TSG" style={{ width: 72, opacity: .9 }} /></div>;
-  if (!user) return <><Login onLogin={login} onGoogleLogin={loginWithGoogle} onLoginError={message => showLoginNotice('error', message)} onClearLoginNotice={() => setLoginNotice(null)} /><LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} /></>;
-  const currentPage = navigation.find(item => item.path === location.pathname)?.label || (location.pathname === '/reports' ? 'Reports' : location.pathname === '/cash-board' ? 'Cash board' : 'Dashboard');
+  if (!user && authChecking) return <div className="login-screen" style={{ display: 'grid', placeItems: 'center' }} aria-busy="true"><img src="/tsg-mark.png" alt="TSG" style={{ width: 72, opacity: 0.9 }} /></div>;
+  if (!user) return <>
+    <Login onLogin={login} onGoogleLogin={loginWithGoogle} onLoginError={message => showLoginNotice('error', message)} onClearLoginNotice={() => setLoginNotice(null)} />
+    <LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} />
+    <AskHost />
+  </>;
+
+  const isAdmin = user.role === 'Admin';
+  const currentPage = navigation.find(item => item.path === location.pathname)?.label || PAGE_TITLES[location.pathname] || 'Dashboard';
   const matchingModules = navigation.filter(item => item.path && item.roles?.includes(user.role) && item.label.toLowerCase().includes(globalSearch.trim().toLowerCase())).slice(0, 6);
+  const adminOnly = element => (isAdmin ? element : <Navigate to="/" replace />);
+
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
-      <div className="brand"><img className="brand-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." /><button className="icon-button close-menu" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X size={18} /></button></div>
+      <div className="brand">
+        <img className="brand-logo" src="/tsg-logo.png" alt="TSG Power Engineering Co., Ltd." />
+        <button className="icon-button close-menu" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
+      </div>
       <div className="nav-label">WORKSPACE</div>
-      <nav className="nav-list">{navigation.filter(item => item.roles?.includes(user.role)).map((item, i) => item.section
-        ? <div className="nav-section" key={`${item.section}-${i}`}>{item.section}</div>
-        : <NavLink key={item.path} to={item.path} end={item.path === '/'} onClick={() => setMenuOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.path === '/notifications' && <i className="nav-dot" />}</NavLink>)}</nav>
+      <nav className="nav-list">
+        {navigation.filter(item => item.roles?.includes(user.role)).map((item, i) => (item.section
+          ? <div className="nav-section" key={`${item.section}-${i}`}>{item.section}</div>
+          : <NavLink key={item.path} to={item.path} end={item.path === '/'} onClick={() => setMenuOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.path === '/notifications' && <i className="nav-dot" />}
+          </NavLink>))}
+      </nav>
       <div className="sidebar-bottom"><div className="sidebar-version">TSG Management System <span>v1.0.0</span></div></div>
     </aside>
     {menuOpen && <button className="sidebar-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />}
+
     <main className="main-panel">
-      <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu size={19} /></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><b>{currentPage}</b></div></div><div className="global-module-search"><Search size={16}/><input aria-label="Search modules" placeholder="Find a module…" value={globalSearch} onChange={event => setGlobalSearch(event.target.value)} onKeyDown={event => { if(event.key==='Escape') setGlobalSearch(''); if(event.key==='Enter'&&matchingModules[0]) { window.location.assign(matchingModules[0].path); setGlobalSearch(''); } }}/>{globalSearch&&<button aria-label="Clear search" onClick={()=>setGlobalSearch('')}><X size={14}/></button>}{globalSearch&&<div className="module-search-results">{matchingModules.length?matchingModules.map(item=><Link key={item.path} to={item.path} onClick={()=>setGlobalSearch('')}><item.icon size={17}/><span>{item.label}</span><ArrowRight size={14}/></Link>):<span>No matching modules</span>}</div>}</div><div className="topbar-right"><div className="today-label"><span className="today-dot" />System operational</div><Link to="/notifications" className="top-icon" aria-label="Notifications"><Bell size={19} /><i /></Link><button className="top-icon theme-toggle" onClick={() => setTheme(current => current === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}>{theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}</button><div className="top-divider" /><button className="profile-button" onClick={logout} title="Sign out"><div className="avatar">{user.avatar ? <img src={user.avatar} alt={`${user.name} profile`} /> : initials(user.name)}</div><div className="profile-copy"><b>{user.name}</b><span>{user.role} account</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
-      <div className="page-content"><Routes>
-        <Route path="/" element={<Dashboard user={user} />} />
-        <Route path="/profile" element={<ProfilePage user={user} notify={notify} />} />
-        <Route path="/schedule" element={<TeamSchedule user={user} />} />
-        <Route path="/cash-board" element={user.role === 'Admin' ? <CashBoard user={user} notify={notify} /> : <Navigate to="/" replace />} />
-        <Route path="/reports" element={user.role === 'Admin' ? <ReportsPage user={user} notify={notify} /> : <Navigate to="/" replace />} />
-        <Route path="*" element={<ModuleRoute user={user} notify={notify} />} />
-      </Routes><footer className="page-footer"><span>© 2026 TSG Power Engineering</span><span>Secure operations <ShieldCheck size={13} /></span></footer></div>
+      <header className="topbar">
+        <div className="topbar-left">
+          <button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu size={19} /></button>
+          <div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><b>{currentPage}</b></div>
+        </div>
+        <div className="global-module-search">
+          <Search size={16} />
+          <input aria-label="Search modules" placeholder="Find a module…" value={globalSearch} onChange={event => setGlobalSearch(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Escape') setGlobalSearch(''); if (event.key === 'Enter' && matchingModules[0]) { window.location.assign(matchingModules[0].path); setGlobalSearch(''); } }} />
+          {globalSearch && <button aria-label="Clear search" onClick={() => setGlobalSearch('')}><X size={14} /></button>}
+          {globalSearch && <div className="module-search-results">
+            {matchingModules.length
+              ? matchingModules.map(item => <Link key={item.path} to={item.path} onClick={() => setGlobalSearch('')}><item.icon size={17} /><span>{item.label}</span><ArrowRight size={14} /></Link>)
+              : <span>No matching modules</span>}
+          </div>}
+        </div>
+        <div className="topbar-right">
+          <div className="today-label"><span className="today-dot" />System operational</div>
+          <Link to="/notifications" className="top-icon" aria-label="Notifications"><Bell size={19} /><i /></Link>
+          <button className="top-icon theme-toggle" onClick={() => setTheme(current => (current === 'dark' ? 'light' : 'dark'))} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}>{theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}</button>
+          <div className="top-divider" />
+          <button className="profile-button" onClick={logout} title="Sign out">
+            <div className="avatar">{user.avatar ? <img src={user.avatar} alt={`${user.name} profile`} /> : initials(user.name)}</div>
+            <div className="profile-copy"><b>{user.name}</b><span>{user.role} account</span></div>
+            <LogOut size={16} className="logout-icon" />
+          </button>
+        </div>
+      </header>
+
+      <div className="page-content">
+        <Suspense fallback={<PageLoading />}>
+          <Routes>
+            <Route path="/" element={<Dashboard user={user} />} />
+            <Route path="/profile" element={<ProfilePage user={user} notify={notify} />} />
+            <Route path="/schedule" element={<TeamSchedule user={user} />} />
+            <Route path="/cash-board" element={adminOnly(<CashBoard user={user} notify={notify} />)} />
+            <Route path="/reports" element={adminOnly(<ReportsPage notify={notify} />)} />
+            <Route path="/job-profitability" element={adminOnly(<JobProfitability notify={notify} />)} />
+            <Route path="/advance-overview" element={adminOnly(<AdvanceOverview />)} />
+            <Route path="*" element={<ModuleRoute user={user} notify={notify} />} />
+          </Routes>
+        </Suspense>
+        <footer className="page-footer"><span>© 2026 TSG Power Engineering</span><span>Secure operations <ShieldCheck size={13} /></span></footer>
+      </div>
     </main>
     <LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} />
+    <AskHost />
     {toast && <div className="toast"><Check size={16} />{toast}</div>}
   </div>;
 }
-
-function useInstallPrompt() {
-  const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const [available, setAvailable] = useState(() => Boolean(window.__tsgInstallPrompt));
-  const [installed, setInstalled] = useState(isStandalone);
-  useEffect(() => {
-    const sync = () => { setAvailable(Boolean(window.__tsgInstallPrompt)); setInstalled(isStandalone()); };
-    const installedHandler = () => { setAvailable(false); setInstalled(true); };
-    window.addEventListener('tsg-install-available', sync);
-    window.addEventListener('tsg-app-installed', installedHandler);
-    return () => { window.removeEventListener('tsg-install-available', sync); window.removeEventListener('tsg-app-installed', installedHandler); };
-  }, []);
-  const install = async () => {
-    const prompt = window.__tsgInstallPrompt;
-    if (!prompt) return false;
-    prompt.prompt();
-    const choice = await prompt.userChoice.catch(() => ({ outcome: 'dismissed' }));
-    if (choice.outcome === 'accepted') { window.__tsgInstallPrompt = null; setAvailable(false); }
-    return choice.outcome === 'accepted';
-  };
-  return { canInstall: available, installed, install };
-}
-
-function Login({ onLogin, onGoogleLogin, onLoginError, onClearLoginNotice }) {
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false); const [googleBusy, setGoogleBusy] = useState(false);
-  const { canInstall, installed, install } = useInstallPrompt(); const [installMessage, setInstallMessage] = useState('');
-  const submit = async e => { e.preventDefault(); setBusy(true); onClearLoginNotice(); try { await onLogin({ email, password }); } catch (err) { onLoginError(err.message || 'Could not sign in. Check your details and try again.'); } finally { setBusy(false); } };
-  const google = async () => { setGoogleBusy(true); onClearLoginNotice(); try { await onGoogleLogin(); } catch (err) { onLoginError(err.message || 'Could not start Google sign-in.'); setGoogleBusy(false); } };
-  const handleInstall = async () => {
-    setInstallMessage('');
-    if (canInstall) { await install(); return; }
-    const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    setInstallMessage(iOS ? 'On iPhone or iPad: tap the Share button, then choose Add to Home Screen.' : 'Open your browser menu and choose Install app or Add to Home screen.');
-  };
-  return <div className="login-screen"><div className="login-art"><div className="login-art-grid" /><div className="login-art-content"><div className="login-logo-stage"><span className="login-ring r1" aria-hidden="true" /><span className="login-ring r2" aria-hidden="true" /><div className="login-logo-wrap"><img className="login-center-logo" src="/tsg-mark.png" alt="TSG" /></div></div></div></div><div className="login-side"><div className="login-form-wrap"><div className="mobile-login-mark"><span className="login-mobile-wrap"><img className="login-mobile-logo" src="/tsg-mark.png" alt="TSG" /></span></div><div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p className="login-subtitle">Use your account to continue.</p><form onSubmit={submit}><label>Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your email" /></label><label>Password<input type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" /></label><button className="primary-button login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight size={16} /></button></form><div className="login-divider"><span />OR<span /></div><button type="button" className="google-signin" onClick={google} disabled={googleBusy}><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.3 5.3C37 39.2 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>{googleBusy ? 'Opening Google…' : 'Continue with Google'}</button>{!installed && <div className="install-app-row"><button type="button" className="install-app-button" onClick={handleInstall}><Download size={18} /><span><b>Install app</b><small>Add TSG to your home screen</small></span></button>{installMessage && <p className="install-app-note">{installMessage}</p>}</div>}<div className="login-security"><ShieldCheck size={15} /> Secure sign-in · Accounts managed by your administrator</div></div><div className="login-copyright">© 2026 TSG</div></div></div>;
-}
-
-function resolveDashboardMetric(data, aliases = []) {
-  for (const key of aliases) {
-    const value = key.split('.').reduce((node, part) => node?.[part], data);
-    if (value == null) continue;
-    const scalar = typeof value === 'object' ? value.total ?? value.count ?? value.amount ?? value.value : value;
-    if (scalar != null) return scalar;
-  }
-  return null;
-}
-function getDashboardSeries(data, names) {
-  for (const name of names) {
-    const series = name.split('.').reduce((node, part) => node?.[part], data);
-    if (Array.isArray(series)) return series;
-  }
-  return [];
-}
-function sameDisplayName(left, right) {
-  const normalize = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  const a = normalize(left);
-  const b = normalize(right);
-  if (!a || !b) return false;
-  return a === b || (Math.min(a.length, b.length) >= 3 && (a.includes(b) || b.includes(a)));
-}
-function MetricCard({ stat, value, delta, index }) {
-  return <Link to={stat.target} className={`stat-card metric-card ${stat.color}`} style={{ animationDelay: `${index * 55}ms` }}>
-    <div className="metric-card-head"><div className={`stat-icon ${stat.color}`}><stat.icon size={20} strokeWidth={1.9} /></div><span className="metric-trend"><ArrowUpRight size={15} /></span></div>
-    <div className="stat-label">{stat.label}</div><div className="stat-value">{value}</div>
-    <div className="stat-delta">{delta || 'Current period'}</div>
-  </Link>;
-}
-function MiniBarChart({ series, emptyText, cash = false }) {
-  if (!series.length) return <div className="chart-empty"><span className="chart-empty-icon"><Activity size={19} /></span><b>No chart data yet</b><span>{emptyText}</span></div>;
-  const max = Math.max(1, ...series.flatMap(item => [Number(item.revenue ?? item.income ?? item.value ?? 0), Number(item.expenses ?? item.outflow ?? 0)]));
-  return <div className={`mini-bar-chart ${cash ? 'cash-chart' : ''}`}>
-    <div className="chart-legend"><span><i className="legend-revenue" />{cash ? 'Inflow' : 'Revenue'}</span>{!cash && <span><i className="legend-expense" />Expenses</span>}</div>
-    <div className="bar-chart-plot">{series.map((item,index) => { const first=Number(item.revenue ?? item.income ?? item.value ?? 0); const second=Number(item.expenses ?? item.outflow ?? 0); return <div className="bar-chart-group" key={`${item.month || item.label || index}`}><div className="bar-chart-bars"><span className="revenue-bar" style={{height:`${Math.max(3,first/max*100)}%`}} title={`${cash?'Inflow':'Revenue'}: ${first.toLocaleString('en-US')}`} />{!cash && <span className="expense-bar" style={{height:`${Math.max(3,second/max*100)}%`}} title={`Expenses: ${second.toLocaleString('en-US')}`} />}</div><small>{item.month || item.label || ''}</small></div>; })}</div>
-  </div>;
-}
-function JobStatusDonut({ counts, emptyText }) {
-  const palette = ['#2f88f5','#18b89b','#f2ad4b','#8f78f6','#ec7182','#82a0b8'];
-  const entries = (Array.isArray(counts) ? counts.map(item => [item.status ?? item.label ?? item.name ?? 'Other', item.count ?? item.total ?? item.value]) : Object.entries(counts || {})).map(([label,value]) => [label, Number(value?.count ?? value?.total ?? value) || 0]).filter(([,value]) => value > 0);
-  const total = entries.reduce((sum,[,value]) => sum + value,0);
-  if (!total) return <div className="chart-empty"><span className="chart-empty-icon"><BriefcaseIcon size={19} /></span><b>No status data yet</b><span>{emptyText}</span></div>;
-  let cursor=0; const stops=entries.map(([,value],i)=>{const start=cursor;cursor+=value/total*100;return `${palette[i%palette.length]} ${start}% ${cursor}%`;}).join(',');
-  return <div className="status-chart-wrap"><div className="status-donut" style={{background:`conic-gradient(${stops})`}}><div><b>{total}</b><span>Job orders</span></div></div><div className="status-legend">{entries.map(([label,value],i)=><div key={label}><i style={{background:palette[i%palette.length]}}/><span>{label}</span><b>{value}</b></div>)}</div></div>;
-}
-function Dashboard({ user }) {
-  const demo = user.id?.startsWith('demo-');
-  const dashboardQuery = useQuery({ queryKey: ['dashboard', user.role], queryFn: () => apiRequest('/dashboard'), enabled: !demo, staleTime: 30_000 });
-  const dashboardData = dashboardQuery.data?.data || dashboardQuery.data || {};
-  const liveCounts = dashboardData.counts || dashboardData.stats || dashboardData;
-  const dashboardJobsQuery = useQuery({ queryKey: ['dashboard-jobs'], queryFn: () => apiRequest('/jobs?page=1&limit=5'), enabled: !demo && user.role === 'Staff', staleTime: 20_000 });
-  const myStaffQuery = useQuery({ queryKey: ['dashboard', 'my-staff', user.id], queryFn: () => apiRequest('/staff?page=1&limit=500'), enabled: !demo && user.role === 'Staff', staleTime: 20_000 });
-  const myJobsQuery = useQuery({ queryKey: ['dashboard', 'my-jobs', user.id], queryFn: () => apiRequest('/jobs?page=1&limit=5000'), enabled: !demo && user.role === 'Staff', staleTime: 20_000 });
-  const invoicesQuery = useQuery({ queryKey: ['dashboard-invoices'], queryFn: () => apiRequest('/invoices?page=1&limit=5'), enabled: !demo && user.role === 'Admin', staleTime: 20_000 });
-  const cashQuery = useQuery({ queryKey: ['dashboard-cash', user.role], queryFn: () => apiRequest(`/${user.role === 'Admin' ? 'cash-claims' : apiEndpoint('my-expense-claims')}?page=1&limit=5`), enabled: !demo, staleTime: 20_000 });
-  const myClaimsQuery = useQuery({ queryKey: ['dashboard', 'my-claims', user.id], queryFn: () => apiRequest('/my-expense-claims?page=1&limit=5000'), enabled: !demo && user.role === 'Staff', staleTime: 20_000 });
-  const myAdvancesQuery = useQuery({ queryKey: ['dashboard', 'my-advances', user.id], queryFn: () => apiRequest('/my-advances?page=1&limit=5000'), enabled: !demo && user.role === 'Staff', staleTime: 20_000 });
-  const demoJobs = demo ? readDemoRows('jobs', moduleInfo.jobs) : [];
-  const demoInvoices = demo ? readDemoRows('invoices', moduleInfo.invoices) : [];
-  const demoCash = demo ? readDemoRows(user.role === 'Admin' ? 'cash-claims' : 'my-expense-claims', moduleInfo[user.role === 'Admin' ? 'cash-claims' : 'my-expense-claims']) : [];
-  const demoClaims = demo && user.role === 'Staff' ? readDemoRows('my-expense-claims', moduleInfo['my-expense-claims']) : [];
-  const demoAdvances = demo && user.role === 'Staff' ? readDemoRows('my-advances', moduleInfo['my-advances']) : [];
-  const quotationRows = demo ? readDemoRows('quotations', moduleInfo.quotations) : [];
-  const jobRows = demo ? demoJobs : normalizeList(dashboardJobsQuery.data, moduleInfo.jobs.columns);
-  const invoiceRows = demo ? demoInvoices : normalizeList(invoicesQuery.data, moduleInfo.invoices.columns);
-  const invoiceCol = name => moduleInfo.invoices.columns.indexOf(name);
-  const cashRows = demo ? demoCash : normalizeList(cashQuery.data, moduleInfo[user.role === 'Admin' ? 'cash-claims' : 'my-expense-claims'].columns);
-  const myStaffIds = (() => {
-    if (demo || user.role !== 'Staff') return [];
-    const userId = String(user.id || '');
-    const email = String(user.email || '').trim().toLowerCase();
-    return lookupRecords('staff', myStaffQuery.data).filter(record => {
-      const profileId = record?.profile_id ? String(record.profile_id) : '';
-      const staffEmail = String(record?.email || '').trim().toLowerCase();
-      return Boolean((userId && profileId === userId) || (email && staffEmail === email) || sameDisplayName(user.name, record?.name));
-    }).map(record => String(record?.id || '')).filter(Boolean);
-  })();
-  const myJobRecords = demo || user.role !== 'Staff' ? [] : lookupRecords('jobs', myJobsQuery.data);
-  const isClosedJob = record => /completed|closed|cancel/i.test(String(record?.status || ''));
-  const assignedEmployeeIds = record => (Array.isArray(record?.assigned_employees) ? record.assigned_employees : []).map(item => String(item?.id ?? item?.staff_id ?? item ?? ''));
-  const isAssignedToUser = record => {
-    if (myStaffIds.includes(String(record?.assigned_to || '')) || myStaffIds.includes(String(record?.team_leader || ''))) return true;
-    if (assignedEmployeeIds(record).some(id => myStaffIds.includes(id))) return true;
-    return sameDisplayName(user.name, record?.assigned_to_name) || sameDisplayName(user.name, record?.team_leader_name);
-  };
-  const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
-  const amountNumber = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0;
-  const clientAssignedJobs = myJobRecords.filter(record => isAssignedToUser(record) && !isClosedJob(record)).length;
-  const clientTodayJobs = myJobRecords.filter(record => isAssignedToUser(record) && !isClosedJob(record) && String(record?.planned_start_date || record?.job_date || '').slice(0, 10) === todayIso).length;
-  const myAssignedJobs = Math.max(Number(resolveDashboardMetric(liveCounts, ['myAssignedJobs', 'assignedJobs', 'assigned_jobs']) || 0), clientAssignedJobs);
-  const todaysScheduledJobs = Math.max(Number(resolveDashboardMetric(liveCounts, ['todaysScheduledJobs', 'scheduledToday', 'scheduled_today']) || 0), clientTodayJobs);
-  const myClaimRecords = demo ? demoClaims : lookupRecords(myClaimsQuery.data);
-  const clientPendingClaims = myClaimRecords.filter(record => /submitted|pending approval/i.test(String(demo ? record?.[5] : record?.status || ''))).reduce((sum, record) => sum + amountNumber(demo ? record?.[4] : (record?.amount_value ?? record?.amount)), 0);
-  const myAdvanceRecords = demo ? demoAdvances : lookupRecords(myAdvancesQuery.data);
-  const clientOpenAdvance = myAdvanceRecords.filter(record => demo ? amountNumber(record?.[5]) > 0 : /issued|partially settled|under review|settlement approved/i.test(String(record?.status || ''))).reduce((sum, record) => sum + amountNumber(demo ? record?.[5] : record?.balance), 0);
-  const myPendingClaims = Math.max(Number(resolveDashboardMetric(liveCounts, ['myPendingClaims', 'pendingClaims', 'pending_claims']) || 0), clientPendingClaims);
-  const myOpenAdvanceBalance = Math.max(Number(resolveDashboardMetric(liveCounts, ['myOpenAdvanceBalance', 'openAdvanceBalance', 'advance_balance']) || 0), clientOpenAdvance);
-  const invoicePayments = user.role === 'Admin' ? cashRows.filter(row => /payment|receipt|received/i.test(String(row[1] || ''))).slice(0,4) : [];
-  const jobStatusCounts = demo
-    ? demoJobs.reduce((counts,row)=>{const status=String(row[5]||'Unknown');counts[status]=(counts[status]||0)+1;return counts;},{})
-    : dashboardData.jobsByStatus || dashboardData.jobStatusCounts || dashboardData.job_status_counts || {};
-  const revenueSeries = getDashboardSeries(dashboardData,['monthlyRevenueExpenses','revenueVsExpenses','revenue_expense_trend','analytics.revenueExpenses']);
-  const cashFlowSeries = getDashboardSeries(dashboardData,['monthlyCashFlow','cashFlow','cash_flow','analytics.cashFlow']);
-  const pendingQuotes = demo ? quotationRows.filter(row=>/draft|pending approval/i.test(String(row[5]))).length : resolveDashboardMetric(liveCounts,['pendingQuotations','pending_quotations','quotations.pending']);
-  const outstandingAmount = resolveDashboardMetric(liveCounts,['outstandingPayments','unpaidInvoices','unpaidInvoiceTotal','invoices.unpaidTotal']);
-  const revenueAmount = resolveDashboardMetric(liveCounts,['totalRevenue','revenue','revenueTotal','income.total']);
-  const expensesAmount = resolveDashboardMetric(liveCounts,['totalExpenses','expenses','expenseTotal','expense.total']);
-  const cashAmount = resolveDashboardMetric(liveCounts,['netCashBalance','cashBalance','cash_balance','cash.netBalance']);
-  const adminStats = [
-    {label:'Total revenue',value:revenueAmount ?? (demo?'MMK 1,248,500':'—'),delta:dashboardData.comparisons?.revenue,target:'/income',icon:ArrowUpRight,color:'blue'},
-    {label:'Outstanding payments',value:outstandingAmount ?? (demo?'MMK 482,000':'—'),delta:dashboardData.comparisons?.outstanding,target:'/income',icon:ReceiptTextIcon,color:'amber'},
-    {label:'Total expenses',value:expensesAmount ?? (demo?'MMK 816,200':'—'),delta:dashboardData.comparisons?.expenses,target:'/cash-claims',icon:ArrowDownRight,color:'violet'},
-    {label:'Net cash balance',value:cashAmount ?? (demo?'MMK 864,000':'—'),delta:dashboardData.comparisons?.cash,target:'/cash-board',icon:WalletIcon,color:'green'},
-  ];
-  const staffStats = [
-    {label:'My assigned jobs',value:myAssignedJobs,delta:null,target:'/jobs',icon:BriefcaseIcon,color:'blue'},
-    {label:"Today's schedule",value:todaysScheduledJobs,delta:null,target:'/jobs',icon:ClipboardIcon,color:'violet'},
-    {label:'Pending claims',value:myPendingClaims,delta:null,target:'/my-expense-claims',icon:ReceiptTextIcon,color:'amber'},
-    {label:'Open advance balance',value:myOpenAdvanceBalance,delta:null,target:'/my-advances',icon:WalletIcon,color:'green'},
-    {label:'Pending quotations',value:pendingQuotes ?? '—',delta:null,target:'/quotations',icon:FileTextIcon,color:'teal'},
-  ];
-  const stats = user.role === 'Admin' ? adminStats : staffStats;
-  const today = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
-  const moneyText = (value, isMoney = true) => { if(value==null||value==='?')return '—'; if(typeof value==='number')return isMoney?`MMK ${value.toLocaleString('en-US',{maximumFractionDigits:0})}`:value.toLocaleString('en-US'); return String(value); };
-  const formatDelta = delta => { if(delta==null)return demo?'Demo snapshot':'Change unavailable'; if(typeof delta==='object'){const change=delta.percent ?? delta.changePercent ?? delta.value;const direction=Number(change)<0?'down':'up';return Number.isFinite(Number(change))?`${Math.abs(Number(change))}% ${direction} vs previous period`:String(delta.label||'Compared with previous period');} return String(delta); };
-  const navActions = user.role === 'Admin' ? [['Cash board',WalletIcon,'/cash-board'],['Invoice & income',ReceiptTextIcon,'/income'],['Team schedule',ClipboardIcon,'/schedule'],['Manage staff',UsersIcon,'/staff'],['Review claims',ReceiptTextIcon,'/cash-claims']] : [['My job orders',BriefcaseIcon,'/jobs'],['Team schedule',ClipboardIcon,'/schedule'],['New quotation',FileTextIcon,'/quotations',true],['New invoice',ReceiptTextIcon,'/invoices',true],['New service report',ClipboardIcon,'/service-reports',true],['Request material',PackageCheckIcon,'/material-requests',true],['Submit expense claim',ReceiptTextIcon,'/my-expense-claims',true],['Request advance',WalletIcon,'/my-advances',true]];
-  const showRowsState = (query, rows) => query.isLoading ? 'Loading records?' : query.isError ? 'Could not load records.' : rows.length ? '' : 'No records to show yet.';
-  return <>
-    <div className="page-heading dashboard-heading"><div><div className="eyebrow">{user.role==='Admin'?'COMPANY OVERVIEW':'YOUR WORKSPACE'}</div><h1>{user.role==='Admin'?'Operations Overview':'My work'}</h1><p>{user.role==='Admin'?'A clear view of service, finance and customer activity.':'Your assigned work and items needing attention.'}</p></div><div className="heading-actions"><span className="date-pill"><Clock3 size={15}/>{today}</span><button className="secondary-button" onClick={()=>window.print()}><Download size={15}/>Export overview</button></div></div>
-    {dashboardQuery.isError && <div className="dashboard-api-error" role="status">Live summary is temporarily unavailable. Module data remains available below.</div>}
-    <div className="stat-grid">{stats.map((stat,index)=><MetricCard key={stat.label} stat={stat} value={moneyText(stat.value,/revenue|payment|expense|cash|claim|advance/i.test(stat.label))} delta={formatDelta(stat.delta)} index={index}/>)}</div>
-    <div className="dashboard-quick"><section className="panel quick-panel"><div className="panel-heading"><div><h2>Quick actions</h2><p>Common tasks</p></div></div><div className="quick-links">{navActions.map(([label,Icon,target,openCreate])=><Link to={target} state={openCreate?{openCreate:true,form:target.replace(/^\//,'')}:undefined} key={label}><span className="quick-icon"><Icon size={18}/></span><span>{label}</span><ArrowRight size={15} className="quick-arrow"/></Link>)}</div></section></div>
-    <div className={`analytics-grid ${user.role==='Staff'?'staff-analytics-grid':''}`}>
-      {user.role==='Admin'&&<section className="panel analytics-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue vs expenses</h2><p>Monthly financial performance</p></div><Link to="/reports" className="text-link">Reports <ArrowRight size={14}/></Link></div><MiniBarChart series={revenueSeries} emptyText="Monthly totals will appear here when provided by the dashboard API."/></section>}
-      {user.role==='Staff'&&<section className="panel analytics-panel job-status-panel"><div className="panel-heading"><div><h2>Job order status</h2><p>Current workload distribution</p></div><Link to="/jobs" className="text-link">All jobs <ArrowRight size={14}/></Link></div><JobStatusDonut counts={jobStatusCounts} emptyText={demo?'No job orders available.':'Status totals were not included in the dashboard response.'}/></section>}
-      {user.role==='Admin'&&<section className="panel analytics-panel cash-trend-panel"><div className="panel-heading"><div><h2>Monthly cash flow</h2><p>Money received over time</p></div><Link to="/cash-claims" className="text-link">Cash &amp; bank <ArrowRight size={14}/></Link></div><MiniBarChart series={cashFlowSeries} cash emptyText="Monthly totals will appear here when provided by the dashboard API."/></section>}
-      {user.role==='Admin'&&<section className="panel invoice-summary-panel"><div className="panel-heading"><div><h2>Outstanding invoices</h2><p>Open customer balances</p></div><Link to="/income" className="text-link">Invoice &amp; income <ArrowRight size={14}/></Link></div><div className="invoice-summary-value">{moneyText(outstandingAmount ?? (demo?'MMK 482,000':'—'))}</div><div className="invoice-summary-meta"><span>{invoiceRows.filter(row=>/unpaid|partial|overdue|issued/i.test(String(row[invoiceCol('Status')]||''))).length} open in recent records</span><span className="summary-status">{invoiceRows.length?`${invoiceRows.length} recent invoices`:invoicesQuery.isLoading?'Loading…':'No invoice records'}</span></div><div className="invoice-mini-list">{invoiceRows.slice(0,3).map(row=><Link to="/income" key={row[0]}><span><b>{row[0]}</b><small>{row[invoiceCol('Customer')]}{row[invoiceCol('Job order')]&&row[invoiceCol('Job order')]!=='—'?` · ${row[invoiceCol('Job order')]}`:''}</small></span><strong>{row[invoiceCol('Outstanding')]}</strong><Status value={row[invoiceCol('Status')]||'Unpaid'}/></Link>)}{!invoiceRows.length&&<div className="dashboard-empty-line">{showRowsState(invoicesQuery,invoiceRows)}</div>}</div></section>}
-    </div>
-    <div className="dashboard-grid dashboard-data-grid">
-      {user.role==='Staff'&&<section className="panel jobs-panel"><div className="panel-heading"><div><h2>Recent job orders</h2><p>Latest service work across your team.</p></div><Link to="/jobs" className="text-link">View all <ArrowRight size={14}/></Link></div><div className="table-scroll"><table className="data-table dashboard-table"><thead><tr><th>JOB ORDER</th><th>CUSTOMER / MACHINE</th><th>ASSIGNED TO</th><th>STATUS</th><th>DUE</th></tr></thead><tbody>{jobRows.slice(0,5).map(row=><tr key={row._id||row[0]}><td><b className="record-link">{row[0]}</b></td><td>{row[1]}</td><td>{row[2]}</td><td><Status value={row[5]||'New'}/></td><td>{row[3]}</td></tr>)}{!jobRows.length&&<tr><td colSpan={5} className="empty-state">{showRowsState(dashboardJobsQuery,jobRows)}</td></tr>}</tbody></table></div></section>}
-      {user.role==='Admin'&&<section className="panel activity-panel"><div className="panel-heading"><div><h2>Recent customer payments</h2><p>Latest receipts and invoice payments.</p></div><Link to="/cash-claims" className="text-link">Cash &amp; bank <ArrowRight size={14}/></Link></div><div className="attention-list">{invoicePayments.map(row=><div className="attention-row" key={row[0]}><span className="attention-icon green"><WalletIcon size={17}/></span><div className="attention-copy"><b>{row[2]}</b><small>{row[0]} · {row[3]}</small></div><strong className="payment-amount">{row[4]}</strong></div>)}{!invoicePayments.length&&<div className="dashboard-empty-line">{showRowsState(cashQuery,cashRows)||'No recent customer payments.'}</div>}</div></section>}
-    </div>
-    <div className="dashboard-pending-row"><section className="panel pending-panel"><div className="panel-heading"><div><h2>{user.role==='Admin'?'Pending approvals':'My outstanding items'}</h2><p>Items requiring attention.</p></div><span className="attention-count">{demo?(user.role==='Staff'?quotationRows.filter(row=>/draft|pending approval/i.test(String(row[5]))).length:0)+cashRows.filter(row=>/submitted|pending approval/i.test(String(row[5]))).length:resolveDashboardMetric(liveCounts,['pendingApprovals','pending_approvals','approvals.pending'])??'—'}</span></div><div className="pending-links">{user.role==='Staff'&&<Link to="/quotations"><FileTextIcon size={17}/><span>Quotations</span><b>{demo?quotationRows.filter(row=>/draft|pending approval/i.test(String(row[5]))).length:resolveDashboardMetric(liveCounts,['pendingQuotations','pending_quotations'])??'—'}</b><ArrowRight size={14}/></Link>}<Link to={user.role==='Admin'?'/cash-claims':'/my-expense-claims'}><ReceiptTextIcon size={17}/><span>Expense claims</span><b>{demo?cashRows.filter(row=>/submitted|pending approval/i.test(String(row[5]))).length:resolveDashboardMetric(liveCounts,['pendingExpenseClaims','pending_expense_claims'])??'—'}</b><ArrowRight size={14}/></Link><Link to="/material-requests"><PackageCheckIcon size={17}/><span>Material requests</span><b>{demo?readDemoRows('material-requests',moduleInfo['material-requests']).filter(row=>/pending/i.test(String(row[5]))).length:resolveDashboardMetric(liveCounts,['pendingMaterialRequests','pending_material_requests'])??'—'}</b><ArrowRight size={14}/></Link></div></section></div>
-  </>;
-}
-
-function dashboardValue(data, label) {
-  const keys = {
-    'Total revenue': ['totalRevenue','total_revenue','revenue','revenue.total'], 'Outstanding payments': ['outstandingPayments','outstanding_payments','unpaidInvoices','unpaidInvoiceTotal','invoices.unpaidTotal'], 'Total expenses': ['totalExpenses','total_expenses','expenses','expenses.total'], 'Net cash balance': ['netCashBalance','net_cash_balance','cashBalance','cash_balance'], 'Active job orders': ['activeJobs','active_jobs','jobs.active'], 'Pending quotations': ['pendingQuotations','pending_quotations','quotations.pending'], Customers: ['customers','customerCount'], 'Unpaid invoices': ['unpaidInvoices','unpaidInvoiceTotal','invoices.unpaidTotal'], 'Cash balance': ['cashBalance','cash_balance'], 'My assigned jobs': ['myAssignedJobs','assignedJobs','assigned_jobs'], "Today's schedule": ['todaysScheduledJobs','scheduledToday','scheduled_today'], 'Pending claims': ['myPendingClaims','pendingClaims','pending_claims'], 'Open advance balance': ['myOpenAdvanceBalance','openAdvanceBalance','advance_balance'],
-  }[label] || [];
-  for (const key of keys) {
-    const value = key.split('.').reduce((node, part) => node?.[part], data);
-    if (value == null) continue;
-    const scalar = typeof value === 'object' ? value.total ?? value.count ?? value.amount : value;
-    if (scalar == null) continue;
-    if (/revenue|expenses|cash balance|outstanding|unpaid invoices|advance balance/i.test(label) && typeof scalar === 'number') return `MMK ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(scalar)}`;
-    return String(scalar);
-  }
-  return null;
-}
-
-function ProfilePage({ user, notify }) {
-  const [name, setName] = useState(user.name || '');
-  const [username, setUsername] = useState(user.username || '');
-  const [phone, setPhone] = useState(user.phone || '');
-  const [avatar, setAvatar] = useState(user.avatar || '');
-  const [password, setPassword] = useState('');
-  const [passwordConfirm, setPasswordConfirm] = useState('');
-  const [photoError, setPhotoError] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    setName(user.name || '');
-    setUsername(user.username || '');
-    setPhone(user.phone || '');
-    setAvatar(user.avatar || '');
-  }, [user.id, user.name, user.username, user.phone, user.avatar]);
-  const loadPhoto = file => {
-    if (!file) { setAvatar(''); setPhotoError(''); return; }
-    if (!/^image\//.test(file.type)) { setPhotoError('Choose an image file (JPG, PNG or WebP).'); return; }
-    if (file.size > 1.5 * 1024 * 1024) { setPhotoError('Choose an image smaller than 1.5 MB.'); return; }
-    const reader = new FileReader();
-    reader.onload = () => { setAvatar(String(reader.result || '')); setPhotoError(''); };
-    reader.readAsDataURL(file);
-  };
-  const invalid = name.trim().length < 2 || username.trim().length < 3 || Boolean(photoError) || (password !== '' && (password.length < 10 || password !== passwordConfirm));
-  const save = async () => {
-    setBusy(true);
-    try {
-      const payload = { name: name.trim(), username: username.trim(), phone: phone.trim(), avatar };
-      if (password) payload.password = password;
-      if (String(user.id).startsWith('demo-')) {
-        const nextUser = { ...user, name: payload.name, username: payload.username, phone: payload.phone, avatar: payload.avatar };
-        saveAccountAvatar(user.username, avatar);
-        sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
-        window.dispatchEvent(new Event('tsg-user-updated'));
-      } else {
-        const updated = await apiRequest(`/users/${encodeURIComponent(user.id)}`, { method: 'PUT', body: JSON.stringify(payload) });
-        const apiUser = updated?.user ? updated : (updated || {});
-        const nextUser = { ...user, name: apiUser.user || apiUser.name || payload.name, username: apiUser.username || payload.username, phone: payload.phone, avatar: apiUser.avatar ?? payload.avatar };
-        sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
-        window.dispatchEvent(new Event('tsg-user-updated'));
-      }
-      setPassword('');
-      setPasswordConfirm('');
-      notify('Profile updated.');
-    } catch (error) { notify(error.message); }
-    finally { setBusy(false); }
-  };
-  return <><div className="page-heading module-heading"><div><div className="eyebrow">ACCOUNT</div><h1>My profile</h1><p>Keep your contact details, login name and profile picture up to date.</p></div><button className="primary-button" disabled={busy || invalid} onClick={save}>{busy ? 'Saving…' : 'Save profile'}</button></div>
-    <section className="panel profile-panel">
-      <div className="profile-summary"><span className="account-photo-preview profile-preview">{avatar ? <img src={avatar} alt={`${name || 'Your'} profile`} /> : initials(name || user.name)}</span><div><h2>{name || user.name}</h2><p>{user.role} account · {user.email}</p><span className="profile-meta">{username ? `@${username}` : 'No username set'}{phone ? ` · ${phone}` : ''}</span></div></div>
-      <div className="record-fields special-fields profile-fields">
-        <label>Full name<input value={name} onChange={event => setName(event.target.value)} placeholder="Your full name" /></label>
-        <label>Username<input autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} placeholder="Login username" /></label>
-        <label>Phone number<input type="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="Your phone number" /></label>
-        <label>Email<input value={user.email || ''} readOnly aria-readonly="true" /><small>Your login email is managed by an administrator.</small></label>
-        <label>Role<input value={user.role} readOnly aria-readonly="true" /><small>Contact an administrator to change your role or employment details.</small></label>
-        <label>New password<input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Leave blank to keep current" /></label>
-        <label>Confirm new password<input type="password" autoComplete="new-password" value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} placeholder="Repeat new password" /></label>
-        <label className="wide-field">Profile picture<input type="file" accept="image/*" onChange={event => loadPhoto(event.target.files?.[0])} /><small>JPG, PNG or WebP up to 1.5 MB. A square image works best.</small></label>
-        {avatar && <div className="account-photo-field wide-field"><span className="account-photo-preview"><img src={avatar} alt="Profile preview" /></span><button type="button" className="secondary-button" onClick={() => { setAvatar(''); setPhotoError(''); }}>Remove photo</button></div>}
-        {photoError && <p className="form-error wide-field">{photoError}</p>}
-        {password && passwordConfirm && password !== passwordConfirm && <p className="form-error wide-field">Passwords do not match.</p>}
-        {password && password.length < 10 && <p className="form-error wide-field">Use at least 10 characters for the new password.</p>}
-      </div>
-      <div className="profile-actions"><button className="primary-button" disabled={busy || invalid} onClick={save}>{busy ? 'Saving…' : 'Save profile'}</button></div>
-    </section></>;
-}
-
-function ModuleRoute({ user, notify }) {
-  const location = useLocation(); const navigate = useNavigate(); const { pathname } = location; const slug = pathname.replace(/^\//, ''); const info = moduleInfo[slug];
-  if (!info) return <Navigate to="/" replace />;
-  const item = navigation.find(n => n.path === pathname);
-  if (item && !item.roles.includes(user.role)) return <Navigate to="/" replace />;
-  const initialCreateForm = location.state?.openCreate ? (location.state.form || slug) : null;
-  return <ModulePage key={slug} info={info} slug={slug} user={user} notify={notify} initialCreateForm={initialCreateForm} onCreateHandled={() => navigate(pathname, { replace: true, state: null })} />;
-}
-
-function isStatus(value) { return typeof value === 'string' && /^(active|inactive|in stock|received|paid|approved|completed|unread|sent|accepted|in progress|scheduled|submitted|pending|pending approval|draft|open|low stock|overdue|waiting for parts|partially paid|partially issued|unpaid|rejected|cancelled|new|assigned|issued|settled|reviewed|expired|on hold|closed - paid|closed - pending payment|void|credited)$/i.test(value); }
-function normalizeCurrency(value) {
-  if (typeof value !== 'string') return value;
-  if (!/^(₹|INR|Rs\.?|MMK)\s*[\d,]+(?:\.\d+)?$/i.test(value.trim())) return value;
-  const amount = Number(value.replace(/[^0-9.-]/g, ''));
-  return Number.isFinite(amount) ? `MMK ${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : value;
-}
-function normalizeRowCurrency(row) { return Array.isArray(row) ? row.map(normalizeCurrency) : row; }
-function normalizeCurrencyDeep(value) {
-  if (Array.isArray(value)) return value.map(normalizeCurrencyDeep);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, /currency/i.test(key) && typeof item === 'string' ? 'MMK' : normalizeCurrencyDeep(item)]));
-  return normalizeCurrency(value);
-}
-function apiEndpoint(slug) { return ({ accounts: 'users', 'my-expense-claims': 'expenses', salary: 'salaries' })[slug] || slug; }
-function readDemoRows(slug, info) {
-  if (slug === 'recycle-bin') {
-    const entries = JSON.parse(localStorage.getItem('tsg-demo-recycle-bin-entries') || '[]');
-    return entries.map(entry => { const row = [entry.moduleTitle, entry.record[0], entry.deletedBy, entry.deletedAt, entry.mode]; Object.defineProperties(row, { _id: { value: entry.id }, _entry: { value: entry } }); return row; });
-  }
-  if (slug === 'service-reports') {
-    const reports = JSON.parse(localStorage.getItem('tsg-demo-service-reports') || '[]');
-    if (reports.length) return [...reports.map(item => [item.number, item.job, item.customer_name || '—', new Date(item.delivered_at).toLocaleDateString('en-IN'), 'You', 'Submitted']), ...info.rows];
-  }
-  try { return (JSON.parse(localStorage.getItem(`tsg-demo-${slug}`)) || info.rows).map(row => attachDemoRecord(slug, normalizeRowCurrency(row))); } catch { return info.rows.map(normalizeRowCurrency); }
-}
-function attachDemoRecord(slug, row, record) {
-  if (!Array.isArray(row) || !row[0] || row[0] === '?') return row;
-  const key = `tsg-demo-record-${slug}-${row[0]}`;
-  if (record) localStorage.setItem(key, JSON.stringify(normalizeCurrencyDeep(record)));
-  let saved = record;
-  if (!saved) { try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch { saved = null; } }
-  if (saved) Object.defineProperty(row, '_record', { value: normalizeCurrencyDeep(saved), configurable: true, enumerable: false });
-  Object.defineProperty(row, '_id', { value: row[0], configurable: true, enumerable: false });
-  return row;
-}
-function normalizeList(payload, columns) {
-  const list = Array.isArray(payload) ? payload : payload?.items || payload?.data || payload?.results || [];
-  if (!Array.isArray(list)) return [];
-  return list.map(record => {
-    if (Array.isArray(record)) return record.map(normalizeCurrency);
-    const values = columns.map(label => {
-      if (label.toLowerCase() === 'items' && record?.items_display != null) return record.items_display == null ? '—' : normalizeCurrency(String(record.items_display));
-      const aliases = { customer: ['customer_name', 'name'], contact: ['contact_person', 'phone'], 'customer · machine': ['machine_name', 'title'], 'job order': ['number', 'job_number'], quotation: ['number', 'quotation_number'], invoice: ['number', 'invoice_number'], request: ['number', 'request_number'], voucher: ['voucher_no', 'number'], report: ['number', 'report_number'], 'assigned to': ['assigned_to_name', 'staff_name'], 'serial number': ['serial_no'], 'on hand': ['qty_on_hand'], 'reorder at': ['reorder_level'], 'valid until': ['valid_until'], 'due date': ['due_date'], 'last login': ['last_login'], 'created': ['created_at'], items: ['items_display'] };
-      const alias = aliases[label.toLowerCase()] || [];
-      const displayName = alias.filter(key => key.endsWith('_name')).map(key => record?.[key]).find(value => value != null);
-      if (displayName != null) return normalizeCurrency(String(displayName));
-      const wanted = label.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const pair = Object.entries(record || {}).find(([key]) => key.toLowerCase().replace(/[^a-z0-9]/g, '') === wanted);
-      if (pair) return pair[1] == null ? '—' : normalizeCurrency(String(pair[1]));
-      const found = alias.map(key => record?.[key]).find(value => value != null);
-      return found == null ? '—' : normalizeCurrency(String(found));
-    });
-    Object.defineProperty(values, '_id', { value: record?.id ?? record?.uuid ?? record?.[Object.keys(record || {})[0]], enumerable: false });
-    Object.defineProperty(values, '_record', { value: record, enumerable: false });
-    return values;
-  });
-}
-function toApiRecord(columns, values) {
-  return Object.fromEntries(columns.map((column, i) => [column.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), values?.[i] || '']));
-}
-function toDisplayRow(columns, payload) {
-  const aliases = { customer: ['customer_name', 'legal_name', 'customer_id', 'name'], supplier: ['supplier_name', 'name'], machine: ['machine_name', 'name', 'model'], location: ['site_location', 'billing_address', 'address'], asset: ['name'], item: ['name'], code: ['id', 'sku'], quotation: ['number', 'quotation_number'], 'job order': ['number', 'job_number', 'title'], invoice: ['number', 'invoice_number'], request: ['number', 'request_number'], voucher: ['voucher_no', 'number'], report: ['number', 'report_number'], 'customer · machine': ['machine_name', 'title'], contact: ['contact_person', 'phone'], 'due date': ['due_date'], 'serial number': ['serial_no'], amount: ['amount', 'total'], 'assigned to': ['assigned_to_name', 'assigned_to'] };
-  return columns.map(label => { const key = label.toLowerCase().replace(/[^a-z0-9]/g, ''); const alias = aliases[label.toLowerCase()] || []; const keys = [...alias.filter(name => name.endsWith('_name')), key, ...alias.filter(name => !name.endsWith('_name'))]; const value = keys.map(name => payload?.[name] ?? payload?.[name.replace(/_([a-z])/g, (_, char) => char.toUpperCase())]).find(item => item != null && item !== ''); return value == null ? '—' : String(value); });
-}
-function formatMoney(value) { return `MMK ${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`; }
-function nextSalaryVoucher() {
-  const rows = JSON.parse(localStorage.getItem('tsg-demo-salary') || 'null') || moduleInfo.salary.rows;
-  const sequence = Math.max(Number(localStorage.getItem('tsg-demo-salary-sequence') || 1000), ...rows.map(row => Number(String(row[0]).match(/^SAL-\d{4}-(\d+)$/)?.[1] || 0)));
-  localStorage.setItem('tsg-demo-salary-sequence', String(sequence + 1));
-  return `SAL-${new Date().getFullYear()}-${sequence + 1}`;
-}
-function createDemoSalaryVoucher(record) {
-  const ref = record.voucher_no || record.voucher || `SAL-${Date.now()}`;
-  const entries = JSON.parse(localStorage.getItem('tsg-demo-cash-claims') || 'null') || moduleInfo['cash-claims'].rows;
-  const entry = [ref, 'Salary payment', record.staff_name || record.staff_id || 'Staff member', record.paid_on || new Date().toISOString().slice(0, 10), formatMoney(record.net_pay), 'Paid'];
-  localStorage.setItem('tsg-demo-cash-claims', JSON.stringify([entry, ...entries.filter(item => item[0] !== ref)]));
-}
-function toModuleDemoRow(columns, dialog) {
-  const payload = dialog.payload || {};
-  if (dialog.module === 'salary') {
-    const net = Math.max(0, Number(payload.basic_salary || 0) + Number(payload.allowances || 0) - Number(payload.deductions || 0));
-    const staffName = (sampleLookupOptions.staff || []).find(([id]) => id === payload.staff_id)?.[1] || payload.staff_id || 'Staff member';
-    return [nextSalaryVoucher(), staffName, payload.salary_month || new Date().toISOString().slice(0, 7), formatMoney(net), payload.paid_on || '—', payload.status || 'Draft'];
-  }
-  if (dialog.module === 'new-advance') return [`ADV-DEMO-${Date.now()}`, 'Staff advance', payload.staff_id || 'Staff member', payload.date || new Date().toLocaleDateString('en-IN'), formatMoney(payload.amount), 'Pending Approval'];
-  if (dialog.module === 'cash-entry') return [`CASH-DEMO-${Date.now()}`, `Cash ${String(payload.type || 'receipt').toUpperCase()}`, payload.counterparty || payload.source_id || payload.reference_type || 'Manual entry', payload.date || new Date().toLocaleDateString('en-IN'), formatMoney(payload.amount), 'Pending Approval'];
-  if (dialog.module === 'jobs') {
-    const sequence = Math.max(Number(localStorage.getItem('tsg-demo-job-sequence') || 100), ...((JSON.parse(localStorage.getItem('tsg-demo-jobs') || 'null') || moduleInfo.jobs.rows).map(row => Number(String(row[0]).match(/^TSG(\d+)$/)?.[1] || 0))));
-    const jobId = `TSG${sequence + 1}`;
-    localStorage.setItem('tsg-demo-job-sequence', String(sequence + 1));
-    const lookupLabel = (resource, value) => (sampleLookupOptions[resource] || []).find(([id]) => id === value)?.[1] || value || '—';
-    return [jobId, `${payload.customer_name || lookupLabel('customers', payload.customer_id)} · ${payload.equipment_type || payload.title || 'Service job'}`, payload.team_leader || payload.assigned_to ? lookupLabel('staff', payload.team_leader || payload.assigned_to) : 'Unassigned', payload.planned_end_date || '—', payload.priority || 'Normal', payload.status || 'Draft'];
-  }
-  return dialog.values || columns.map((_, i) => payload[columns[i].toLowerCase()] || '—');
-}
-function requestBody(payload) {
-  const values = Object.entries(payload || {});
-  const hasFile = values.some(([, value]) => typeof File !== 'undefined' && value instanceof File);
-  if (!hasFile) return JSON.stringify(payload);
-  const form = new FormData();
-  for (const [key, value] of values) {
-    if (value == null || value === '') continue;
-    if (typeof File !== 'undefined' && value instanceof File) form.append(key, value);
-    else if (Array.isArray(value) && value.some(item => typeof File !== 'undefined' && item instanceof File)) value.forEach(item => { if (item instanceof File) form.append(key, item); });
-    else if (typeof value === 'object') form.append(key, JSON.stringify(value));
-    else form.append(key, String(value));
-  }
-  return form;
-}
-function workflowActions(slug, row, columns, role) {
-  if (slug === 'accounts') { const status = String(row[columns.findIndex(column => /status/i.test(column))] || '').toLowerCase(); return [{ label: 'Update photo', action: 'update-photo' }, { label: 'Reset password', action: 'reset-password' }, { label: 'Deactivate', action: 'deactivate', status: 'Inactive' }].map(item => item.action === 'deactivate' && status !== 'active' ? { label: 'Activate', action: 'activate', status: 'Active' } : item); }
-  if (slug === 'recycle-bin') return [{ label: 'Restore', action: 'restore' }, { label: 'Purge permanently', action: 'purge' }];
-  if (slug === 'staff') return role === 'Admin' ? [{ label: 'Edit profile', action: 'edit-profile' }] : [];
-  if (slug === 'notifications') { const unread = String(row[columns.findIndex(column => /status/i.test(column))] || '').toLowerCase() === 'unread'; return [...(unread ? [{ label: 'Mark read', action: 'mark-read', status: 'Read' }] : []), { label: 'Delete notification', action: 'delete-notification' }]; }
-  if (slug === 'my-advances') return role === 'Staff' ? [{ label: 'Advance details', action: 'advance-expenses' }] : [];
-  if (slug === 'advances') {
-    const advanceStatus = String(row[columns.findIndex(column => /status/i.test(column))] || '').toLowerCase();
-    if (role !== 'Admin') return [];
-    if (advanceStatus === 'pending approval') return [{ label: 'Approve', action: 'approve', status: 'Approved' }, { label: 'Reject', action: 'reject', status: 'Rejected' }];
-    if (advanceStatus === 'approved') return [{ label: 'Release money', action: 'issue-advance' }];
-    if (advanceStatus === 'under review') return [{ label: 'Review settlement', action: 'advance-expenses' }];
-    if (advanceStatus === 'settlement approved') return [{ label: 'Reconcile & close', action: 'advance-expenses' }];
-    if (['issued', 'open', 'partially settled', 'settled'].includes(advanceStatus)) return [{ label: 'View advance', action: 'advance-expenses' }];
-    return [];
-  }
-  if (slug === 'salary') { const status = String(row[5] || '').toLowerCase(); return role === 'Admin' && status !== 'paid' ? [{ label: 'Mark as paid', action: 'mark-salary-paid' }] : []; }
-  if (slug === 'cash-claims' && /advance expense/i.test(String(row[1]))) return [];
-  if (slug === 'cash-claims' && /advance/i.test(String(row[1]))) {
-    const advanceStatus = String(row[5] || '').toLowerCase();
-    if (advanceStatus === 'pending approval') return role === 'Admin' ? [{ label: 'Approve', action: 'approve', status: 'Approved' }, { label: 'Reject', action: 'reject', status: 'Rejected' }] : [];
-    if (advanceStatus === 'approved') return role === 'Admin' ? [{ label: 'Release money', action: 'issue-advance' }] : [];
-    if (['under review', 'settlement approved'].includes(advanceStatus)) return role === 'Admin' ? [{ label: advanceStatus === 'under review' ? 'Review settlement' : 'Reconcile & close', action: 'advance-expenses' }] : [];
-  }
-  const statusIndex = columns.findIndex(column => /status/i.test(column));
-  const status = String(row[statusIndex] || '').toLowerCase();
-  if (slug === 'invoices' && ['unpaid', 'partially paid', 'issued'].includes(status)) return [{ label: 'Record payment', action: 'record-payment' }];
-  if (slug === 'cash-claims' && /^cash/i.test(String(row[1]))) {
-    if (status === 'pending approval') return role === 'Admin' ? [{ label: 'Approve', action: 'approve', status: 'Approved' }, { label: 'Reject', action: 'reject', status: 'Rejected' }] : [];
-    if (status === 'approved') return role === 'Admin' ? [{ label: 'Post transaction', action: 'post', status: 'Posted' }] : [];
-  }
-  if (slug === 'invoices') {
-    if (role !== 'Staff') return [];
-    if (['draft', 'pending approval', 'approved'].includes(status)) return [{ label: 'Issue invoice', action: 'status', status: 'Issued' }];
-  }
-  if (slug === 'jobs' && statusIndex >= 0) {
-    if (['draft', 'new', 'pending approval', 'approved'].includes(status)) return role === 'Staff' ? [{ label: 'Assign / schedule', action: 'assign-job' }, { label: 'Cancel job', action: 'job-cancel' }] : [];
-    if (status === 'assigned' || status === 'scheduled') return [{ label: 'Start work', action: 'status', status: 'In Progress' }, { label: 'Add note', action: 'add-note' }];
-    if (status === 'in progress') { const workflow = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}')[row[0]] || {}; return [{ label: 'Add note', action: 'add-note' }, ...(!workflow.completionReportId ? [{ label: 'Completion report', action: 'service-report' }] : []), { label: 'Put on hold', action: 'status', status: 'On Hold' }]; }
-    if (status === 'on hold' || status === 'waiting for parts') return [{ label: 'Add note', action: 'add-note' }, { label: 'Resume work', action: 'status', status: 'In Progress' }];
-    if (status === 'completed') { const workflow = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}')[row[0]] || {}; return role === 'Staff' && (workflow.completionReportApproved || !Object.keys(workflow).length) ? [{ label: 'Generate invoice', action: 'job-invoice' }, { label: 'Completion report', action: 'service-report' }] : [{ label: 'Completion report', action: 'service-report' }]; }
-    if (status === 'invoice generated') return role === 'Staff' ? [{ label: 'Close job', action: 'job-close' }] : [];
-    if (status === 'closed - pending payment') return role === 'Staff' ? [{ label: 'Close as paid', action: 'job-close' }] : [];
-    return [];
-  }
-  if (slug === 'quotations') {
-    if (role !== 'Staff') return [];
-    if (['draft', 'pending approval', 'approved'].includes(status)) return [{ label: 'Issue to customer', action: 'status', status: 'Sent' }];
-    if (status === 'sent') return [{ label: 'Mark accepted', action: 'status', status: 'Accepted' }, { label: 'Mark rejected', action: 'status', status: 'Rejected' }];
-    if (status === 'accepted') return [{ label: 'Convert to job', action: 'convert-to-job', status: 'Converted to Job' }];
-  }
-  if (slug === 'service-reports') {
-    if (status === 'draft') return [{ label: 'Submit for review', action: 'status', status: 'Submitted' }];
-    if (status === 'submitted') return role === 'Admin' ? [{ label: 'Mark reviewed', action: 'status', status: 'Reviewed' }] : [];
-    if (status === 'reviewed') return role === 'Admin' ? [{ label: 'Approve report', action: 'status', status: 'Approved' }, { label: 'Reject report', action: 'status', status: 'Rejected' }] : [];
-    if (status === 'rejected') return [{ label: 'Resubmit', action: 'status', status: 'Submitted' }];
-  }
-  if (slug === 'material-requests') {
-    if (['pending', 'pending approval'].includes(status)) return role === 'Admin' ? [{ label: 'Approve', action: 'status', status: 'Approved' }, { label: 'Reject', action: 'status', status: 'Rejected' }] : [];
-    if (status === 'approved' || status === 'partially issued') return role === 'Admin' ? [{ label: 'Issue materials', action: 'issue-materials' }] : [];
-    if (status === 'issued') return role === 'Admin' ? [{ label: 'Record return', action: 'return-materials' }] : [];
-  }
-  if ((slug === 'cash-claims' || slug === 'my-expense-claims') && status === 'submitted') return role === 'Admin' ? [{ label: 'Approve', action: 'approve', status: 'Approved' }, { label: 'Reject', action: 'reject', status: 'Rejected' }] : [];
-  if ((slug === 'cash-claims' || slug === 'my-expense-claims') && status === 'approved') return role === 'Admin' ? [{ label: 'Record reimbursement', action: 'pay', status: 'Paid' }] : [];
-  return [];
-}
-
-function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCreateHandled }) {
-  const queryClient = useQueryClient();
-  const isDemo = user.id?.startsWith('demo-');
-  const [rows, setRows] = useState(() => readDemoRows(slug, info));
-  const [search, setSearch] = useState(''); const [statusFilter, setStatusFilter] = useState(''); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [page, setPage] = useState(1); const [filterOpen, setFilterOpen] = useState(false);
-  const [dialog, setDialog] = useState(null); const [typedConfirm, setTypedConfirm] = useState(''); const [openRowActions, setOpenRowActions] = useState(null);
-  const listQuery = useQuery({ queryKey: ['module', slug, search, statusFilter, dateFrom, dateTo, page], queryFn: () => { const params = new URLSearchParams({ page: String(page), limit: '10' }); if (search) params.set('search', search); if (statusFilter) params.set('status', statusFilter); if (dateFrom) params.set('from', dateFrom); if (dateTo) params.set('to', dateTo); return apiRequest(`/${apiEndpoint(slug)}?${params}`); }, enabled: !isDemo, staleTime: 20_000 });
-  useEffect(() => { if (isDemo && slug !== 'recycle-bin') localStorage.setItem(`tsg-demo-${slug}`, JSON.stringify(rows)); }, [isDemo, rows, slug]);
-  const remoteRows = listQuery.data ? normalizeList(listQuery.data, info.columns) : null;
-  const sourceRows = remoteRows || (isDemo ? rows : []);
-  const staffRows = user.role === 'Staff' && isDemo ? (slug === 'jobs' ? sourceRows.filter(row => row[2] === 'You') : sourceRows) : sourceRows;
-  const visibleRows = staffRows.filter(row => {
-    if (!row.join(' ').toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter && !row.some(cell => String(cell).toLowerCase() === statusFilter.toLowerCase())) return false;
-    const dateIndex = info.columns.findIndex(col => /date|due|delivered|issued|purchased/i.test(col));
-    if (dateIndex >= 0 && (dateFrom || dateTo)) { const date = new Date(row[dateIndex]); if (!Number.isNaN(date.valueOf())) { if (dateFrom && date < new Date(`${dateFrom}T00:00:00`)) return false; if (dateTo && date > new Date(`${dateTo}T23:59:59`)) return false; } }
-    return true;
-  });
-  const canCreate = user.role === 'Admin' ? !['jobs', 'quotations', 'invoices', 'income', 'notifications', 'recycle-bin', 'settings'].includes(slug) : ['customers', 'quotations', 'invoices', 'jobs', 'service-reports', 'material-requests', 'my-expense-claims', 'my-advances'].includes(slug);
-  const canEdit = user.role === 'Admin' ? !['accounts', 'notifications', 'recycle-bin', 'income'].includes(slug) : (user.role === 'Staff' && !['my-advances', 'advances'].includes(slug) && ['customers', 'quotations', 'invoices', 'service-reports', 'material-requests', 'my-expense-claims'].includes(slug));
-  const showDelete = user.role === 'Admin' ? !['accounts', 'notifications', 'recycle-bin', 'settings', 'income'].includes(slug) : user.role === 'Staff' && slug === 'customers';
-  const showForceDelete = user.role === 'Admin' && !['accounts', 'notifications', 'recycle-bin', 'settings', 'income'].includes(slug);
-  const onExport = async format => {
-    if (format !== 'pdf' && user.role !== 'Admin') { notify('Excel export is available to admins only.'); return; }
-    if (isDemo) {
-      if (format === 'pdf') { printReport(info.title, info.columns, visibleRows, { ...(search ? { search } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(dateFrom ? { from: dateFrom } : {}), ...(dateTo ? { to: dateTo } : {}) }); return; }
-      const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-      const csv = [info.columns, ...visibleRows.map(row => [...row])].map(record => record.map(quote).join(',')).join('\r\n');
-      const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
-      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${slug}.csv`; anchor.click(); URL.revokeObjectURL(url); return;
-    }
-    try { await exportModule(apiEndpoint(slug), format, { ...(search ? { search } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(dateFrom ? { from: dateFrom } : {}), ...(dateTo ? { to: dateTo } : {}) }); } catch (e) { notify(e.message); }
-  };
-  const create = (requestedForm = slug) => {
-    const form = requestedForm === 'my-advances' ? 'my-advance' : requestedForm === 'advances' ? 'new-advance' : typeof requestedForm === 'string' ? requestedForm : slug;
-    const accountMode = form === 'accounts';
-    const apiResource = ({ 'cash-claims': 'expenses', 'new-advance': 'advances', 'my-advance': 'advances', 'cash-entry': 'cash-entries' })[form] || apiEndpoint(form);
-    const title = ({ 'cash-claims': 'Create expense voucher', 'new-advance': 'Issue staff advance', 'my-advance': 'Request staff advance', 'cash-entry': 'Record cash movement' })[form] || `Create ${info.title.replace(/s$/, '').toLowerCase()}`;
-    setDialog({ type: 'create', accountMode, fields: accountMode ? null : formSchemas[form], apiResource, title, module: form });
-  };
-  useEffect(() => { if (initialCreateForm && canCreate) { create(initialCreateForm); onCreateHandled?.(); } }, [initialCreateForm, canCreate, slug]);
-  const edit = row => {
-    if (slug === 'settings') return setDialog({ type: 'edit', row, fields: [{ key: 'current_value', label: 'Current value', type: 'text', required: true }], apiResource: 'settings', module: 'settings', title: `Edit ${row[0]}` });
-    if (slug === 'advances') return setDialog({ type: 'edit', row, fields: formSchemas['new-advance'], apiResource: 'advances', module: 'new-advance', title: `Edit ${row[0]}` });
-    if (slug === 'cash-claims') {
-      const kind = String(row?.[1] || '');
-      const advance = /advance/i.test(kind);
-      const cash = /^cash/i.test(kind);
-      return setDialog({ type: 'edit', row, fields: advance ? formSchemas['new-advance'] : cash ? formSchemas['cash-entry'] : formSchemas['cash-claims'], apiResource: advance ? 'advances' : cash ? 'cash-entries' : 'expenses', module: slug, title: `Edit ${advance ? 'advance' : cash ? 'cash entry' : 'expense claim'}` });
-    }
-    setDialog({ type: 'edit', row, fields: formSchemas[slug], apiResource: apiEndpoint(slug), module: slug, title: `Edit ${info.title.replace(/s$/, '').toLowerCase()}` });
-  };
-  const remove = (row, force) => setDialog({ type: force ? 'force' : 'delete', row });
-  const clearNotifications = async () => {
-    if (!window.confirm('Delete all notifications? This cannot be undone.')) return;
-    try {
-      if (isDemo) persistRows([]);
-      else {
-        await apiRequest('/notifications?all=true', { method: 'DELETE' });
-        await queryClient.invalidateQueries({ queryKey: ['module', 'notifications'] });
-      }
-      notify('All notifications deleted.');
-    } catch (error) { notify(error.message); }
-  };
-  const persistRows = updater => setRows(old => typeof updater === 'function' ? updater(old) : updater);
-  const confirmAction = async () => {
-    if (dialog.type === 'force' && typedConfirm !== 'DELETE') return;
-    const isRemoving = dialog.type === 'delete' || dialog.type === 'force';
-    const recordId = encodeURIComponent(dialog.row?._id || dialog.row?.[0] || '');
-    try {
-      if (!isDemo) {
-        if (dialog.type === 'reset-password') await apiRequest(`/users/${recordId}/reset-password`, { method: 'POST', body: JSON.stringify({ password: dialog.password }) });
-        else if (dialog.type === 'account-photo') await apiRequest(`/users/${recordId}`, { method: 'PUT', body: JSON.stringify({ avatar: dialog.photo }) });
-        else if (dialog.type === 'my-account') { const payload = { name: dialog.myAccount.name, username: dialog.myAccount.username, avatar: dialog.myAccount.avatar }; if (dialog.myAccount.password) payload.password = dialog.myAccount.password; const updated = await apiRequest(`/users/${encodeURIComponent(dialog.user?.id || user.id)}`, { method: 'PUT', body: JSON.stringify(payload) }); const apiUser = updated?.user || updated || {}; const stored = initialUser() || user; const nextUser = { ...stored, name: apiUser.name || payload.name, username: apiUser.username || payload.username, avatar: apiUser.avatar ?? payload.avatar, role: stored.role }; sessionStorage.setItem('tsg_user', JSON.stringify(nextUser)); window.dispatchEvent(new Event('tsg-user-updated')); }
-        else if (dialog.type === 'staff-profile') {
-          const profileForm = dialog.staffProfile || {};
-          const profileId = dialog.profile?.id || dialog.row?._record?.profile_id || '';
-          const profilePayload = { name: profileForm.name, username: profileForm.username, phone: profileForm.phone, avatar: profileForm.avatar };
-          if (profileForm.password) profilePayload.password = profileForm.password;
-          if (profileId) {
-            const updated = await apiRequest(`/users/${encodeURIComponent(profileId)}`, { method: 'PUT', body: JSON.stringify(profilePayload) });
-            const apiUser = updated?.user ? updated : (updated || {});
-            const current = initialUser() || user;
-            if (String(current.id) === String(profileId)) {
-              const nextUser = { ...current, name: apiUser.user || apiUser.name || profileForm.name, username: apiUser.username || profileForm.username, phone: profileForm.phone, avatar: profileForm.avatar ?? current.avatar };
-              sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
-              window.dispatchEvent(new Event('tsg-user-updated'));
-            }
-          }
-          await apiRequest(`/staff/${recordId}`, { method: 'PUT', body: JSON.stringify({ name: profileForm.name, phone: profileForm.phone, email: profileForm.email }) });
-          await queryClient.invalidateQueries({ queryKey: ['module', 'accounts'] });
-        }
-        else if (dialog.type === 'salary-payment') await apiRequest(`/salaries/${recordId}`, { method: 'PUT', body: JSON.stringify({ status: 'Paid', paid_on: dialog.salaryPayment.date, payment_method: dialog.salaryPayment.method, notes: dialog.salaryPayment.notes }) });
-        else if (dialog.type === 'job-invoice') { const jobId = dialog.row?._id || dialog.row?.[0]; const invoice = await apiRequest('/invoices', { method: 'POST', body: JSON.stringify({ job_id: jobId, customer_id: dialog.customerId || dialog.row?._record?.customer_id, date: dialog.invoiceDate, due_date: dialog.dueDate, payment_terms: dialog.paymentTerms, items: [{ description: dialog.row?.[1] || 'Job service', qty: 1, unit_price: dialog.subtotal }], subtotal: dialog.subtotal, additional_charges: dialog.charges, discount: dialog.discount, total: dialog.total, status: 'Issued' }) }); const invoiceId = invoice?.id || invoice?._id || invoice?.number || invoice?.invoice?.id; if (dialog.amountPaid > 0 && invoiceId) await apiRequest(`/invoices/${encodeURIComponent(invoiceId)}/payments`, { method: 'POST', body: JSON.stringify({ amount: dialog.amountPaid, date: dialog.invoiceDate, method: 'Cash' }) }); await apiRequest(`/jobs/${recordId}/status`, { method: 'POST', body: JSON.stringify({ status: 'Invoice Generated' }) }); }
-        else if (dialog.type === 'job-close') await apiRequest(`/jobs/${recordId}/close`, { method: 'POST', body: JSON.stringify({ payment_status: dialog.paymentStatus, payment_amount: dialog.paymentAmount, due_date: dialog.dueDate }) });
-        else if (dialog.type === 'advance-issue') await apiRequest(`/advances/${recordId}/issue`, { method: 'POST', body: JSON.stringify(dialog.issue) });
-        else if (dialog.type === 'job-cancel') await apiRequest(`/jobs/${recordId}`, { method: 'PUT', body: JSON.stringify({ status: 'Cancelled', cancellation_reason: dialog.reason }) });
-        else if (dialog.type === 'stock-movement') await apiRequest(`/material-requests/${recordId}/${dialog.movement}`, { method: 'POST', body: JSON.stringify(dialog.movementPayload) });
-        else if (dialog.type === 'payment') await apiRequest(`/invoices/${recordId}/payments`, { method: 'POST', body: JSON.stringify(dialog.payment) });
-        else if (dialog.type === 'service-report') await apiRequest(`/jobs/${recordId}/service-report`, { method: 'POST', body: requestBody(dialog.serviceReport) });
-        else if (dialog.type === 'assign-job') await apiRequest(`/jobs/${recordId}/assign`, { method: 'POST', body: requestBody(dialog.payload) });
-        else if (dialog.type === 'job-note') await apiRequest(`/jobs/${recordId}`, { method: 'PUT', body: JSON.stringify({ note: dialog.note }) });
-        else if (dialog.type === 'advance-claim') await apiRequest(`/advances/${recordId}/claim`, { method: 'POST', body: JSON.stringify(dialog.claim) });
-        else if (dialog.type === 'settle-advance') await apiRequest(`/advances/${recordId}/settle`, { method: 'POST', body: JSON.stringify({ amount: dialog.amount }) });
-        else if (dialog.purge) await apiRequest(`/recycle-bin/${recordId}?purge=true`, { method: 'DELETE' });
-        else if (isRemoving) await apiRequest(`/${apiEndpoint(slug)}/${recordId}${dialog.type === 'force' ? '?force=true' : ''}`, { method: 'DELETE' });
-        else if (dialog.accountMode) await apiRequest('/users', { method: 'POST', body: JSON.stringify(dialog.account) });
-        else if (dialog.type === 'create') await apiRequest(`/${dialog.apiResource || apiEndpoint(slug)}`, { method: 'POST', body: requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)) });
-        else if (dialog.type === 'edit') await apiRequest(`/${dialog.apiResource || apiEndpoint(slug)}/${recordId}`, { method: 'PUT', body: requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)) });
-        await queryClient.invalidateQueries({ queryKey: ['module', slug] });
-        await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      } else if (dialog.type === 'reset-password') { /* Demo accounts are preview-only. */ }
-      else if (dialog.type === 'account-photo') {
-        saveAccountAvatar(dialog.accountUsername || dialog.row?.[1], dialog.photo);
-        const stored = initialUser();
-        if (stored && (String(stored.username || '').toLowerCase() === String(dialog.row?.[1] || '').toLowerCase() || stored.name === dialog.row?.[0])) { sessionStorage.setItem('tsg_user', JSON.stringify({ ...stored, avatar: dialog.photo })); window.dispatchEvent(new Event('tsg-user-updated')); }
-      }
-      else if (dialog.type === 'salary-payment') {
-        const { date, method, notes } = dialog.salaryPayment;
-        const net = Number(String(dialog.row?.[3] || '').replace(/[^0-9.-]/g, ''));
-        const voucher = /^SAL-/i.test(String(dialog.row?.[0] || '')) ? dialog.row[0] : nextSalaryVoucher();
-        const record = { ...(dialog.row?._record || {}), voucher_no: voucher, staff_name: dialog.row?.[1], salary_month: dialog.row?.[2], net_pay: net, paid_on: date, payment_method: method, status: 'Paid', notes };
-        const nextRow = attachDemoRecord('salary', [voucher, dialog.row?.[1], dialog.row?.[2], dialog.row?.[3], date, 'Paid'], record);
-        persistRows(old => old.map(item => item === dialog.row ? nextRow : item));
-        createDemoSalaryVoucher(record);
-      }
-      else if (dialog.type === 'my-account') {
-        const { name, username, avatar } = dialog.myAccount;
-        const stored = initialUser() || user;
-        const oldUsername = String(stored.username || '');
-        if (oldUsername && oldUsername.toLowerCase() !== username.toLowerCase()) saveAccountAvatar(oldUsername, '');
-        saveAccountAvatar(username, avatar);
-        const nextUser = { ...stored, name, username, avatar };
-        sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
-        window.dispatchEvent(new Event('tsg-user-updated'));
-        const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        persistRows(old => { const index = old.findIndex(row => String(row[1]).toLowerCase() === oldUsername.toLowerCase() || row[0] === stored.name); if (index >= 0) return old.map((row, i) => i === index ? [name, username, nextUser.role || row[2], row[3], row[4], row[5]] : row); return [[name, username, nextUser.role || 'Admin', 'Today', today, 'Active'], ...old]; });
-      }
-      else if (dialog.type === 'staff-profile') {
-        const profileForm = dialog.staffProfile || {};
-        const nameIndex = info.columns.findIndex(column => /staff|name/i.test(column));
-        const phoneIndex = info.columns.findIndex(column => /phone/i.test(column));
-        const originalName = dialog.row?.[0];
-        persistRows(old => old.map(item => item === dialog.row ? item.map((cell, index) => index === nameIndex ? profileForm.name : index === phoneIndex ? profileForm.phone : cell) : item));
-        if (dialog.profile?.username) saveAccountAvatar(dialog.profile.username, profileForm.avatar);
-        const stored = initialUser();
-        const isSelf = stored && (String(stored.username || '').toLowerCase() === String(dialog.profile?.username || '').toLowerCase() || stored.name === originalName);
-        if (isSelf) {
-          const nextUser = { ...stored, name: profileForm.name, phone: profileForm.phone, avatar: profileForm.avatar };
-          sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
-          window.dispatchEvent(new Event('tsg-user-updated'));
-        }
-        if (dialog.row?._record) {
-          const key = `tsg-demo-record-staff-${originalName}`;
-          localStorage.setItem(key, JSON.stringify({ ...dialog.row._record, name: profileForm.name, phone: profileForm.phone, email: profileForm.email }));
-        }
-      }
-      else if (dialog.type === 'advance-issue') { persistRows(old => old.map(item => item !== dialog.row ? item : item.map((cell,index) => index === 5 ? 'Issued' : index === 4 ? formatMoney(dialog.issue.amount) : cell))); const advances = JSON.parse(localStorage.getItem('tsg-demo-my-advances') || 'null') || moduleInfo['my-advances'].rows; localStorage.setItem('tsg-demo-my-advances', JSON.stringify([[dialog.row[0], dialog.row[3], `${dialog.row[2]} ? ${dialog.issue.purpose || 'Business advance'}`, formatMoney(dialog.issue.amount), formatMoney(0), formatMoney(dialog.issue.amount)], ...advances])); }
-      else if (dialog.type === 'stock-movement') { const inventory = JSON.parse(localStorage.getItem('tsg-demo-inventory') || 'null') || moduleInfo.inventory.rows; const itemIndex = inventory.findIndex(item => item[1] === dialog.movementPayload.item_id || item[0] === dialog.movementPayload.item_id); if (itemIndex < 0) throw new Error('Choose a valid inventory item.'); const updated = [...inventory]; const target = [...updated[itemIndex]]; const onHand = Number(String(target[3]).replace(/[^0-9.]/g, '')); const qty = Number(dialog.movementPayload.quantity); if (dialog.movement === 'issue' && qty > onHand) throw new Error('Issue quantity exceeds available stock.'); const movements = JSON.parse(localStorage.getItem('tsg-demo-stock-movements') || '[]'); const issued = movements.filter(move => move.request_id === dialog.row?.[0] && move.item_id === dialog.movementPayload.item_id && move.type === 'issue').reduce((sum, move) => sum + Number(move.quantity), 0); const returned = movements.filter(move => move.request_id === dialog.row?.[0] && move.item_id === dialog.movementPayload.item_id && move.type === 'return').reduce((sum, move) => sum + Number(move.quantity), 0); if (dialog.movement === 'return' && qty > issued - returned) throw new Error('Return quantity exceeds the amount issued to this request.'); target[3] = `${onHand + (dialog.movement === 'issue' ? -qty : qty)} pcs`; target[5] = Number(String(target[3]).replace(/[^0-9.]/g, '')) <= Number(String(target[4]).replace(/[^0-9.]/g, '')) ? 'Low stock' : 'In stock'; updated[itemIndex] = target; localStorage.setItem('tsg-demo-inventory', JSON.stringify(updated)); localStorage.setItem('tsg-demo-stock-movements', JSON.stringify([{ ...dialog.movementPayload, type: dialog.movement, job_id: dialog.row?.[1], request_id: dialog.row?.[0], by: user.name, at: new Date().toISOString() }, ...movements])); persistRows(old => old.map(item => item !== dialog.row ? item : item.map((cell, index) => index === info.columns.findIndex(col => /status/i.test(col)) ? (dialog.movement === 'issue' ? (qty < Number(dialog.movementPayload.requested_quantity || qty) ? 'Partially Issued' : 'Issued') : 'Partially Issued') : cell))); }
-      else if (dialog.type === 'job-invoice') { persistRows(old => old.map(item => item !== dialog.row ? item : item.map((cell, index) => index === info.columns.findIndex(col => /status/i.test(col)) ? 'Invoice Generated' : cell))); const data = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}'); const invoiceId = `INV-DEMO-${Date.now()}`; const jobData = data[dialog.row?.[0]]?.data || {}; data[dialog.row?.[0]] = { ...(data[dialog.row?.[0]] || {}), invoice: { number: invoiceId, total: dialog.total, amountPaid: dialog.amountPaid, dueDate: dialog.dueDate }, invoiceId }; localStorage.setItem('tsg-demo-job-workflows', JSON.stringify(data)); const invoices = JSON.parse(localStorage.getItem('tsg-demo-invoices') || 'null') || moduleInfo.invoices.rows; localStorage.setItem('tsg-demo-invoices', JSON.stringify([[invoiceId, dialog.row?.[0] || '—', jobData.customer_name || jobData.customer_id || dialog.row?.[1], dialog.invoiceDate, dialog.dueDate, formatMoney(dialog.total), formatMoney(Math.min(dialog.amountPaid, dialog.total)), formatMoney(Math.max(0, dialog.total - dialog.amountPaid)), dialog.amountPaid >= dialog.total ? 'Paid' : dialog.amountPaid > 0 ? 'Partially paid' : 'Unpaid'], ...invoices])); }
-      else if (dialog.type === 'job-close') { persistRows(old => old.map(item => item !== dialog.row ? item : item.map((cell, index) => index === info.columns.findIndex(col => /status/i.test(col)) ? (dialog.paymentStatus === 'Paid' ? 'Closed - Paid' : 'Closed - Pending Payment') : cell))); const workflows = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}'); const record = workflows[dialog.row?.[0]] || {}; if (record.invoice) { record.invoice.amountPaid = Math.min(record.invoice.total, Number(record.invoice.amountPaid || 0) + Number(dialog.paymentAmount || 0)); workflows[dialog.row[0]] = record; localStorage.setItem('tsg-demo-job-workflows', JSON.stringify(workflows)); const invoices = JSON.parse(localStorage.getItem('tsg-demo-invoices') || 'null') || moduleInfo.invoices.rows; localStorage.setItem('tsg-demo-invoices', JSON.stringify(invoices.map(item => item[0] === record.invoice.number ? item.map((cell, index) => index === 8 ? (record.invoice.amountPaid >= record.invoice.total ? 'Paid' : record.invoice.amountPaid > 0 ? 'Partially paid' : 'Unpaid') : cell) : item))); } }
-      else if (dialog.type === 'job-cancel') { persistRows(old => old.map(item => item !== dialog.row ? item : item.map((cell, index) => index === info.columns.findIndex(col => /status/i.test(col)) ? 'Cancelled' : cell))); const notes = JSON.parse(localStorage.getItem(`tsg-demo-job-notes-${recordId}`) || '[]'); localStorage.setItem(`tsg-demo-job-notes-${recordId}`, JSON.stringify([{ note: `Cancelled: ${dialog.reason}`, by: user.name, at: new Date().toLocaleString('en-IN') }, ...notes])); }
-      else if (dialog.type === 'payment') persistRows(old => old.map(item => { if (item !== dialog.row) return item; const changed = [...item]; const statusIndex = info.columns.findIndex(col => /status/i.test(col)); const amountIndex = info.columns.findIndex(col => /amount|total/i.test(col)); const total = Number(String(item[amountIndex] || '').replace(/[^0-9.]/g, '')); changed[statusIndex] = Number(dialog.payment.amount) >= total ? 'Paid' : 'Partially paid'; return changed; }))
-      else if (dialog.type === 'service-report') { const reportId = `SR-DEMO-${Date.now()}`; const reports = JSON.parse(localStorage.getItem('tsg-demo-service-report-records') || '[]'); const reportRecord = { number: reportId, job: dialog.row[0], status: 'Submitted', ...dialog.serviceReport }; localStorage.setItem('tsg-demo-service-report-records', JSON.stringify([reportRecord, ...reports])); const reportRows = JSON.parse(localStorage.getItem('tsg-demo-service-reports') || 'null') || moduleInfo['service-reports'].rows; localStorage.setItem('tsg-demo-service-reports', JSON.stringify([[reportId, dialog.row[0], dialog.serviceReport.customer_name || '?', new Date(dialog.serviceReport.delivered_at).toLocaleDateString('en-IN'), dialog.serviceReport.technician_name || 'You', 'Submitted'], ...reportRows])); const data = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}'); data[dialog.row[0]] = { ...(data[dialog.row[0]] || {}), completionReportId: reportId, completionReportApproved: false }; localStorage.setItem('tsg-demo-job-workflows', JSON.stringify(data)); }
-      else if (dialog.type === 'advance-claim') { persistRows(old => old.map(item => { if (item !== dialog.row) return item; const changed = [...item]; const claimed = Number(String(changed[4]).replace(/[^0-9.]/g, '')) + Number(dialog.claim.amount); const amount = Number(String(changed[3]).replace(/[^0-9.]/g, '')); changed[4] = `MMK ${claimed.toLocaleString('en-US')}`; changed[5] = `MMK ${Math.max(0, amount - claimed).toLocaleString('en-US')}`; return changed; })); const expenseRows = JSON.parse(localStorage.getItem('tsg-demo-my-expense-claims') || 'null') || moduleInfo['my-expense-claims'].rows; localStorage.setItem('tsg-demo-my-expense-claims', JSON.stringify([[`EV-DEMO-${Date.now()}`, dialog.claim.category, dialog.row[0], dialog.claim.date, `MMK ${Number(dialog.claim.amount).toLocaleString('en-US')}`, 'Submitted'], ...expenseRows])); }
-      else if (dialog.type === 'assign-job') persistRows(old => old.map(item => { if (item !== dialog.row) return item; const changed = [...item]; const assignedId = dialog.payload.team_leader || dialog.payload.assigned_to; const option = sampleLookupOptions.staff.find(([value]) => value === assignedId); changed[2] = option?.[1] || assignedId || changed[2]; if (dialog.payload.planned_end_date) changed[3] = dialog.payload.planned_end_date; const statusIndex = info.columns.findIndex(col => /status/i.test(col)); if (statusIndex >= 0) changed[statusIndex] = dialog.payload.planned_start_date || dialog.payload.planned_end_date ? 'Scheduled' : 'Assigned'; return changed; }));
-      else if (dialog.type === 'job-note') { const key = `tsg-demo-job-notes-${recordId}`; const notes = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify([{ note: dialog.note, by: user.name, at: new Date().toLocaleString('en-IN') }, ...notes])); }
-      else if (dialog.type === 'settle-advance') { persistRows(old => old.map(item => { if (item !== dialog.row) return item; const changed = [...item]; changed[5] = 'Settled'; return changed; })); const advances = JSON.parse(localStorage.getItem('tsg-demo-my-advances') || 'null') || moduleInfo['my-advances'].rows; localStorage.setItem('tsg-demo-my-advances', JSON.stringify(advances.map(item => { if (item[0] !== dialog.row?.[0]) return item; const changed = [...item]; const balance = Math.max(0, Number(String(changed[5]).replace(/[^0-9.]/g, '')) - Number(dialog.amount)); changed[5] = formatMoney(balance); if (!balance) changed[4] = formatMoney(Number(String(changed[3]).replace(/[^0-9.]/g, ''))); return changed; }))); }
-      else if (isRemoving) {
-        if (dialog.purge) localStorage.setItem('tsg-demo-recycle-bin-entries', JSON.stringify(JSON.parse(localStorage.getItem('tsg-demo-recycle-bin-entries') || '[]').filter(item => item.id !== dialog.row._entry?.id)));
-        else { const entries = JSON.parse(localStorage.getItem('tsg-demo-recycle-bin-entries') || '[]'); entries.unshift({ id: `${slug}-${Date.now()}`, module: slug, moduleTitle: info.title, recordId: dialog.row._id || null, record: [...dialog.row], deletedBy: user.name, deletedAt: new Date().toLocaleDateString('en-IN'), mode: dialog.type === 'force' ? 'Force (recoverable)' : 'Restricted' }); localStorage.setItem('tsg-demo-recycle-bin-entries', JSON.stringify(entries)); }
-        persistRows(old => old.filter(r => r !== dialog.row));
-      }
-      else if (dialog.accountMode) { saveAccountAvatar(dialog.account.username, dialog.account.avatar); persistRows(old => [dialog.values, ...old]); }
-      else if (dialog.type === 'create' && dialog.module === 'my-advance') {
-        const request = dialog.payload || {};
-        const id = `ADV-DEMO-${Date.now()}`;
-        const date = request.date || new Date().toISOString().slice(0, 10);
-        const amount = Number(request.amount) || 0;
-        const row = [id, date, request.purpose || 'Staff advance request', formatMoney(amount), formatMoney(0), formatMoney(amount), request.job_id || '—', 'Pending Approval'];
-        attachDemoRecord('my-advances', row, { id, number: id, date, due_date: request.due_date, job_id: request.job_id, amount, purpose: request.purpose, claimed: 0, balance: amount, status: 'Pending Approval' });
-        persistRows(old => [row, ...old]);
-      }
-      else if (dialog.type === 'create') {
-        const newRow = toModuleDemoRow(info.columns, dialog);
-        attachDemoRecord(dialog.module, newRow, dialog.displayPayload || dialog.payload);
-        if (dialog.module === 'jobs') { const workflows = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}'); workflows[newRow[0]] = { data: dialog.displayPayload || dialog.payload }; localStorage.setItem('tsg-demo-job-workflows', JSON.stringify(workflows)); }
-        persistRows(old => [newRow, ...old]);
-        
-      }
-      else if (dialog.type === 'edit') persistRows(old => old.map(r => r === dialog.row ? dialog.values : r));
-      notify(dialog.type === 'reset-password' ? 'Password reset.' : dialog.type === 'account-photo' ? 'Profile picture updated.' : dialog.type === 'my-account' ? 'Your account has been updated.' : dialog.type === 'staff-profile' ? 'Staff profile updated.' : dialog.type === 'salary-payment' ? 'Salary marked as paid. Voucher generated in Expense & claims.' : dialog.type === 'payment' ? 'Payment recorded.' : dialog.type === 'advance-issue' ? 'Advance issued and linked to the employee balance.' : dialog.type === 'stock-movement' ? `Stock ${dialog.movement === 'issue' ? 'issued' : 'return recorded'} and ledger updated.` : dialog.type === 'service-report' ? 'Completion report submitted for manager review.' : dialog.type === 'assign-job' ? 'Job assignment saved.' : dialog.type === 'job-invoice' ? 'Invoice generated.' : dialog.type === 'job-close' ? 'Job closed.' : dialog.type === 'job-cancel' ? 'Job cancelled with reason recorded.' : dialog.type === 'job-note' ? 'Job note saved.' : dialog.type === 'advance-claim' ? 'Advance claim submitted.' : dialog.type === 'settle-advance' ? 'Advance settled.' : dialog.purge ? 'Record permanently purged.' : isRemoving ? 'Record moved to the Recycle Bin.' : dialog.accountMode ? 'User account created.' : dialog.module === 'my-advance' ? 'Advance request submitted for approval.' : dialog.type === 'create' ? 'Record created.' : 'Changes saved.');
-      setDialog(null); setTypedConfirm('');
-    } catch (error) { notify(error.message); }
-  };
-  const workflow = async (row, action, nextStatus) => {
-    if (action === 'edit-profile') {
-      const record = row._record || {};
-      const phoneIndex = info.columns.findIndex(column => /phone/i.test(column));
-      if (isDemo) {
-        const username = record.username || '';
-        setDialog({ type: 'staff-profile', row, profile: { id: record.profile_id || '', name: record.name || row[0], phone: record.phone || row[phoneIndex] || '', email: record.email || '', username, avatar: record.avatar || accountAvatar(username) } });
-        return;
-      }
-      try {
-        let profile = null;
-        if (record.profile_id) profile = await apiRequest(`/users/${encodeURIComponent(record.profile_id)}`);
-        if (!profile) {
-          const list = await apiRequest('/users?limit=500');
-          const staffEmail = String(record.email || '').trim().toLowerCase();
-          const staffName = String(record.name || row[0] || '').trim().toLowerCase();
-          profile = lookupRecords('users', list).find(item => (staffEmail && String(item.email || '').trim().toLowerCase() === staffEmail) || (staffName && String(item.user || item.name || '').trim().toLowerCase() === staffName)) || null;
-        }
-        setDialog({ type: 'staff-profile', row, profile });
-      } catch (error) { notify(error.message); }
-      return;
-    }
-    if (action === 'reset-password') { setDialog({ type: 'reset-password', row }); return; }
-    if (action === 'update-photo') { setDialog({ type: 'account-photo', row }); return; }
-    if (action === 'record-payment') { setDialog({ type: 'payment', row }); return; }
-    if (action === 'service-report') { setDialog({ type: 'service-report', row }); return; }
-    if (action === 'issue-materials' || action === 'return-materials') { setDialog({ type: 'stock-movement', movement: action === 'issue-materials' ? 'issue' : 'return', row }); return; }
-    if (action === 'job-invoice') { setDialog({ type: 'job-invoice', row }); return; }
-    if (action === 'job-close') { const record = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}')[row[0]] || {}; if (isDemo && (!record.invoiceId || !record.completionReportId)) { notify('Add a completion report and invoice before closing this job.'); return; } setDialog({ type: 'job-close', row }); return; }
-    if (action === 'job-cancel') { setDialog({ type: 'job-cancel', row }); return; }
-    if (action === 'add-note') { setDialog({ type: 'job-note', row, title: 'Add job note' }); return; }
-    if (action === 'assign-job') { setDialog({ type: 'assign-job', row, title: 'Assign and schedule job', module: 'jobs', fields: [{ ...formSchemas.jobs.find(field => field.key === 'team_leader'), required: true }, formSchemas.jobs.find(field => field.key === 'assigned_to'), formSchemas.jobs.find(field => field.key === 'assigned_employees'), formSchemas.jobs.find(field => field.key === 'planned_start_date'), formSchemas.jobs.find(field => field.key === 'planned_end_date'), formSchemas.jobs.find(field => field.key === 'assigned_vehicle'), formSchemas.jobs.find(field => field.key === 'responsibilities')].filter(Boolean) }); return; }
-    if (action === 'mark-salary-paid') { setDialog({ type: 'salary-payment', row }); return; }
-    if (action === 'claim-advance') { setDialog({ type: 'advance-claim', row }); return; }
-    if (action === 'advance-expenses') { setDialog({ type: 'advance-expenses', row }); return; }
-    if (action === 'settle-advance') { setDialog({ type: 'settle-advance', row }); return; }
-    if (action === 'issue-advance') { setDialog({ type: 'advance-issue', row }); return; }
-    const recordId = encodeURIComponent(row._id || row[0]);
-    if (slug === 'notifications' && action === 'delete-notification') {
-      if (!window.confirm('Delete this notification permanently?')) return;
-      try {
-        if (isDemo) persistRows(old => old.filter(item => item !== row));
-        else {
-          await apiRequest(`/notifications/${recordId}`, { method: 'DELETE' });
-          await queryClient.invalidateQueries({ queryKey: ['module', 'notifications'] });
-        }
-        notify('Notification deleted.');
-      } catch (error) { notify(error.message); }
-      return;
-    }
-    if (slug === 'recycle-bin' && action === 'purge') { setDialog({ type: 'force', row, purge: true }); return; }
-    try {
-      if (!isDemo) {
-        const apiModule = slug === 'my-expense-claims' || slug === 'cash-claims' ? 'expenses' : slug;
-        if (slug === 'recycle-bin' && action === 'restore') await apiRequest(`/recycle-bin/${recordId}/restore`, { method: 'POST' });
-        else if (slug === 'notifications' && action === 'mark-read') await apiRequest(`/notifications/${recordId}`, { method: 'PUT', body: JSON.stringify({ is_read: true }) });
-        else if (slug === 'accounts' && ['activate', 'deactivate'].includes(action)) await apiRequest(`/users/${recordId}`, { method: 'PUT', body: JSON.stringify({ is_active: action === 'activate' }) });
-        else if (slug === 'jobs') await apiRequest(`/${apiModule}/${recordId}/status`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
-        else if (slug === 'cash-claims' && /advance/i.test(String(row[1])) && ['approve', 'reject'].includes(action)) await apiRequest(`/advances/${recordId}/${action}`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
-        else if (slug === 'advances' && ['approve', 'reject'].includes(action)) await apiRequest(`/advances/${recordId}/${action}`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
-        else if (slug === 'cash-claims' && /^cash/i.test(String(row[1])) && ['approve', 'reject', 'post'].includes(action)) await apiRequest(`/cash-entries/${recordId}/${action}`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
-        else if (slug === 'quotations' && action === 'convert-to-job') await apiRequest(`/${apiModule}/${recordId}/convert-to-job`, { method: 'POST' });
-        else if (apiModule === 'expenses') await apiRequest(`/${apiModule}/${recordId}/${action}`, { method: 'POST' });
-        else await apiRequest(`/${apiModule}/${recordId}`, { method: 'PUT', body: JSON.stringify({ status: nextStatus }) });
-        await queryClient.invalidateQueries({ queryKey: ['module', slug] });
-        await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      } else if (slug === 'recycle-bin' && action === 'restore') {
-        const entry = row._entry;
-        const storedOriginals = localStorage.getItem(`tsg-demo-${entry.module}`);
-        const originalRows = storedOriginals ? JSON.parse(storedOriginals) : (moduleInfo[entry.module]?.rows || []);
-        localStorage.setItem(`tsg-demo-${entry.module}`, JSON.stringify([entry.record, ...originalRows]));
-        localStorage.setItem('tsg-demo-recycle-bin-entries', JSON.stringify(JSON.parse(localStorage.getItem('tsg-demo-recycle-bin-entries') || '[]').filter(item => item.id !== entry.id)));
-        persistRows(old => old.filter(item => item !== row));
-  } else {
-        persistRows(old => old.map(item => { if (item !== row) return item; const changed = [...item]; const ix = info.columns.findIndex(col => /status/i.test(col)); if (ix >= 0) changed[ix] = nextStatus; return changed; }));
-        if (slug === 'service-reports') { const records = JSON.parse(localStorage.getItem('tsg-demo-service-report-records') || '[]'); localStorage.setItem('tsg-demo-service-report-records', JSON.stringify(records.map(item => item.number === row[0] ? { ...item, status: nextStatus } : item))); const workflows = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}'); const job = row[1]; workflows[job] = { ...(workflows[job] || {}), completionReportApproved: nextStatus === 'Approved' }; localStorage.setItem('tsg-demo-job-workflows', JSON.stringify(workflows)); if (nextStatus === 'Approved') { const jobs = JSON.parse(localStorage.getItem('tsg-demo-jobs') || 'null') || moduleInfo.jobs.rows; localStorage.setItem('tsg-demo-jobs', JSON.stringify(jobs.map(item => item[0] === job ? item.map((cell,index) => index === moduleInfo.jobs.columns.findIndex(col => /status/i.test(col)) ? 'Completed' : cell) : item))); } }
-        if (slug === 'quotations' && action === 'convert-to-job') { const customer = moduleInfo.customers.rows.find(item => item[0] === row[1]); const jobDialog = { module: 'jobs', payload: { customer_id: customer?.[1], customer_name: row[1], quotation_id: row[0], quotation_amount: String(row[4]).replace(/[^0-9.]/g, ''), title: `Service from ${row[0]}`, status: 'Draft', priority: 'Normal' } }; const jobRow = toModuleDemoRow(moduleInfo.jobs.columns, jobDialog); const jobs = JSON.parse(localStorage.getItem('tsg-demo-jobs') || 'null') || moduleInfo.jobs.rows; attachDemoRecord('jobs', jobRow, jobDialog.payload); localStorage.setItem('tsg-demo-jobs', JSON.stringify([jobRow, ...jobs])); const workflows = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}'); workflows[jobRow[0]] = { data: jobDialog.payload, quotationId: row[0] }; localStorage.setItem('tsg-demo-job-workflows', JSON.stringify(workflows)); }
-      }
-      notify(action === 'restore' ? 'Record restored to its module.' : `${info.title.slice(0, -1)} ${action}.`);
-    } catch (error) { notify(error.message); }
-  };
-  const statusValues = [...new Set(staffRows.flatMap(row => row.filter(cell => isStatus(cell))))];
-  const totalCount = Number(listQuery.data?.total ?? listQuery.data?.pagination?.total ?? visibleRows.length);
-  const pageCount = Math.max(1, Math.ceil(totalCount / 10));
-  const pageRows = isDemo ? visibleRows.slice((page - 1) * 10, page * 10) : visibleRows;
-  return <><div className="page-heading module-heading"><div><div className="eyebrow">OPERATIONS</div><h1>{info.title}</h1><p>{info.description}</p></div>{slug === 'accounts' && user.role === 'Admin' && <button className="secondary-button" onClick={() => setDialog({ type: 'my-account', user })}><ShieldCheck size={15} />My account</button>}{canCreate && <button className="primary-button" onClick={() => create()}><Plus size={16} />{slug === 'jobs' ? 'Create job order' : slug === 'customers' ? 'Create customer' : slug === 'my-advances' ? 'Request advance' : slug === 'advances' ? 'New advance' : slug === 'my-expense-claims' ? 'Submit expense claim' : `Add ${info.title.replace(/s$/, '').toLowerCase()}`}</button>}{canCreate && slug === "cash-claims" && <><button className="secondary-button" onClick={() => create("cash-entry")}><Plus size={15} />Cash movement</button><button className="secondary-button" onClick={() => create("new-advance")}><Plus size={15} />New advance request</button></>}</div>{slug === 'jobs' && <div className="job-stage-strip">{[['Draft', Wrench], ['Scheduled', Clock3], ['In Progress', Activity], ['On Hold', Bell], ['Completed', Check], ['Invoice Generated', ReceiptTextIcon]].map(([stage, Icon]) => <button key={stage} className={statusFilter === stage ? 'selected' : ''} onClick={() => { setStatusFilter(statusFilter === stage ? '' : stage); setPage(1); }}><span><Icon size={16} /></span><b>{staffRows.filter(row => String(row[info.columns.findIndex(col => /status/i.test(col))]).toLowerCase() === stage.toLowerCase()).length}</b><small>{stage}</small></button>)}</div>}<section className="panel module-panel"><div className="list-toolbar"><div className="search-box"><Search size={16} /><input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder={`Search ${info.title.toLowerCase()}…`} /></div><div className="list-actions">{slug === 'notifications' && <button className="secondary-button export-button" onClick={clearNotifications}><Trash2 size={15} /> Clear all</button>}<button className={`secondary-button filter-button ${filterOpen ? 'filter-selected' : ''}`} onClick={() => setFilterOpen(value => !value)}><Filter size={15} /> Filters {statusFilter && <span className="filter-count">1</span>}</button>{slug !== 'notifications' && <><span className="toolbar-separator" />{slug !== 'service-reports' && user.role === 'Admin' && <button className="secondary-button export-button" onClick={() => onExport('xlsx')}><FileDown size={15} /> {isDemo ? 'Download CSV' : 'Export Excel'}</button>}<button className="secondary-button export-button" onClick={() => onExport('pdf')}><Download size={15} /> Export list PDF</button></>}</div></div>{filterOpen && <div className="filter-panel"><label>Status<select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}><option value="">All statuses</option>{statusValues.map(value => <option key={value}>{value}</option>)}</select></label><label>From<input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} /></label><label>To<input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} /></label><button className="row-action-button" onClick={() => { setSearch(""); setStatusFilter(""); setDateFrom(""); setDateTo(""); setPage(1); }}>Clear filters</button><span>Exports use these same filters.</span></div>}{listQuery.isError && <div className="query-error"><b>Couldn’t load {info.title.toLowerCase()}.</b><span>{listQuery.error.message}</span><button className="secondary-button" onClick={() => listQuery.refetch()}>Try again</button></div>}{listQuery.isFetching && <div className="loading-bar"><span /></div>}<div className="table-scroll"><table className="data-table module-table"><thead><tr>{info.columns.map(col => <th key={col}>{col.toUpperCase()}</th>)}<th className="actions-head">ACTIONS</th></tr></thead><tbody>{pageRows.map((row, ri) => { const avatar = slug === 'accounts' ? rowAvatar(row, isDemo) : ''; return <tr key={`${row._id || row[0]}-${ri}`}>{row.map((cell, ci) => <td key={ci}>{isStatus(cell) ? <Status value={cell} /> : ci === 0 && slug === 'accounts' ? <div className="record-user">{avatar ? <img className="record-avatar" src={avatar} alt="" /> : <span className="record-avatar record-avatar-fallback">{initials(cell)}</span>}<b className="record-link">{cell}</b></div> : ci === 0 ? <b className="record-link">{cell}</b> : cell}</td>)}<td><div className="row-actions"><button className="row-view-button" onClick={() => setDialog({ type: 'view', row, module: slug })}>View</button><button className="row-more-button" aria-label={`More actions for ${row[0]}`} title="More actions" aria-expanded={openRowActions?.id === String(row._id || row[0])} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); const id = String(row._id || row[0]); setOpenRowActions(current => current?.id === id ? null : { id, top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 290)), left: Math.max(8, Math.min(rect.right - 205, window.innerWidth - 220)) }); }}><MoreHorizontal size={19} /></button>{openRowActions?.id === String(row._id || row[0]) && createPortal(<><button className="row-actions-dismiss" aria-label="Close actions menu" onClick={() => setOpenRowActions(null)} /><div className="row-action-popover" role="menu" style={{ top: openRowActions.top, left: openRowActions.left }}><strong>{row[0]}</strong><button role="menuitem" onClick={() => { setOpenRowActions(null); setDialog({ type: 'view', row, module: slug }); }}>View details</button>{canEdit && <button role="menuitem" onClick={() => { setOpenRowActions(null); edit(row); }}>Edit record</button>}{slug === 'accounts' && (String(row[1]).toLowerCase() === String(user.username || '').toLowerCase() || row[0] === user.name) && <button role="menuitem" onClick={() => { setOpenRowActions(null); setDialog({ type: 'my-account', user }); }}>Manage my account</button>}{canPrintDocument(slug, row) && <button role="menuitem" onClick={() => { setOpenRowActions(null); printRecordDocument(slug, row, info.columns); }}>Print / save {documentLabel(slug)} PDF</button>}{workflowActions(slug, row, info.columns, user.role).map(action => <button role="menuitem" key={action.label} onClick={() => { setOpenRowActions(null); workflow(row, action.action, action.status); }}>{action.label}</button>)}{showDelete && <><span className="row-menu-divider" /><button role="menuitem" className="menu-danger" onClick={() => { setOpenRowActions(null); remove(row, false); }}>Delete record</button>{showForceDelete && <button role="menuitem" className="menu-danger" onClick={() => { setOpenRowActions(null); remove(row, true); }}>Force delete</button>}</>}</div></>, document.body)}</div></td></tr>; })}{!visibleRows.length && <tr><td colSpan={info.columns.length + 1} className="empty-state">{listQuery.isLoading ? 'Loading records…' : `No records match “${search}”.`}</td></tr>}</tbody></table></div><div className="table-footer"><span>Showing <b>{visibleRows.length ? (page - 1) * 10 + 1 : 0}–{Math.min(page * 10, totalCount)}</b> of <b>{totalCount}</b> records</span><div className="pagination"><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}><ChevronLeft size={15} /></button><button className="page-active">{page}</button><button disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}><ChevronRight size={15} /></button></div></div></section><div className="module-note"><ShieldCheck size={15} /><span>{user.role === 'Admin' ? 'Admin access · Changes are recorded in the audit log.' : slug === 'customers' ? 'Staff access · You can manage customer records.' : slug === 'quotations' ? 'Staff access · You can prepare, issue and convert quotations.' : slug === 'invoices' ? 'Staff access · You can issue invoices and record customer payments.' : 'Staff access · You can only view and update your assigned work.'}</span></div>{dialog && (['job-invoice', 'job-close', 'job-cancel'].includes(dialog.type) ? <JobFinanceDialog key={`${dialog.type}-${dialog.row?.[0]}`} isDemo={isDemo} dialog={dialog} onClose={() => setDialog(null)} onConfirm={payload => { Object.assign(dialog, payload); confirmAction(); }} /> : dialog.type === 'advance-expenses' ? <AdvanceExpensesDialog key={`advx-${dialog.row?._id || dialog.row?.[0]}`} row={dialog.row} columns={info.columns} isDemo={isDemo} readOnly={user.role !== 'Staff'} isAdmin={user.role === 'Admin'} notify={notify} onClose={() => setDialog(null)} onChanged={() => { queryClient.invalidateQueries({ queryKey: ['module'] }); queryClient.invalidateQueries({ queryKey: ['dashboard'] }); }} /> : dialog.type === 'staff-profile' ? <StaffProfileDialog key={`${dialog.type}-${dialog.row?.[0]}`} dialog={dialog} columns={info.columns} onClose={() => setDialog(null)} onConfirm={payload => { Object.assign(dialog, payload); confirmAction(); }} /> : dialog.type === 'advance-issue' ? <AdvanceIssueDialog key={`${dialog.type}-${dialog.row?.[0]}`} dialog={dialog} onClose={() => setDialog(null)} onConfirm={payload => { Object.assign(dialog, payload); confirmAction(); }} /> : dialog.type === 'salary-payment' ? <SalaryPaymentDialog key={`${dialog.type}-${dialog.row?.[0]}`} dialog={dialog} onClose={() => setDialog(null)} onConfirm={payload => { Object.assign(dialog, payload); confirmAction(); }} /> : dialog.type === 'stock-movement' ? <StockMovementDialog key={`${dialog.type}-${dialog.row?.[0]}`} dialog={dialog} onClose={() => setDialog(null)} onConfirm={payload => { Object.assign(dialog, payload); confirmAction(); }} /> : <Dialog key={`${dialog.type}-${dialog.row?.[0] || dialog.title || slug}`} isDemo={isDemo} dialog={dialog} columns={info.columns} typedConfirm={typedConfirm} setTypedConfirm={setTypedConfirm} onClose={() => { setDialog(null); setTypedConfirm(''); }} onConfirm={confirmAction} />)}</>;
-}
-
-function AdvanceIssueDialog({ dialog, onClose, onConfirm }) {
-  const requested = Number(String(dialog.row?.[4] || '').replace(/[^0-9.]/g, ''));
-  const [amount, setAmount] = useState(String(requested || ''));
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState('Bank transfer');
-  const [purpose, setPurpose] = useState('');
-  return <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="modal"><div className="modal-header"><div><div className="eyebrow">ADVANCE · {dialog.row?.[0]}</div><h2>Release advance money</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div><div className="record-fields special-fields"><label>Issue date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Approved amount<input type="number" value={amount} onChange={event => setAmount(event.target.value)} /></label><label>Payment method<select value={method} onChange={event => setMethod(event.target.value)}><option>Bank transfer</option><option>Cash</option><option>Cheque</option></select></label><label className="wide-field">Payment voucher reference<input value={purpose} onChange={event => setPurpose(event.target.value)} placeholder="Voucher / transfer reference" /></label><p className="wide-field">Record the actual payment to the staff member. They can then record expenses against this advance and its job order.</p></div><div className="modal-footer"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!String(amount).trim() || !purpose.trim()} onClick={() => onConfirm({ issue: { amount: Number(amount), date, method, reference: purpose, purpose } })}>Record payment</button></div></section></div>;
-}
-
-function SalaryPaymentDialog({ dialog, onClose, onConfirm }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState('Bank transfer');
-  const [notes, setNotes] = useState('');
-  return <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="modal"><div className="modal-header"><div><div className="eyebrow">SALARY · {dialog.row?.[0]}</div><h2>Mark salary as paid</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div><div className="record-fields special-fields"><div className="job-total-preview wide-field"><span>Net pay</span><b>{dialog.row?.[3] || '—'}</b><small>{dialog.row?.[1]} · {dialog.row?.[2]}</small></div><label>Payment date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><label>Payment method<select value={method} onChange={event => setMethod(event.target.value)}><option>Bank transfer</option><option>Cash</option><option>Cheque</option></select></label><label className="wide-field">Notes<textarea rows={2} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Optional payment reference or remarks" /></label><p className="wide-field">Confirming payment marks this salary paid and automatically generates a salary voucher in Expense & claims.</p></div><div className="modal-footer"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!date} onClick={() => onConfirm({ salaryPayment: { date, method, notes } })}>Confirm payment</button></div></section></div>;
-}
-
-function StaffProfileDialog({ dialog, columns = [], onClose, onConfirm }) {
-  const profile = dialog.profile || {};
-  const record = dialog.row?._record || {};
-  const phoneIndex = columns.findIndex(column => /phone/i.test(column));
-  const [name, setName] = useState(profile.name || profile.user || record.name || dialog.row?.[0] || '');
-  const [phone, setPhone] = useState(profile.phone || record.phone || dialog.row?.[phoneIndex] || '');
-  const [email, setEmail] = useState(record.email || profile.email || '');
-  const [username, setUsername] = useState(profile.username || '');
-  const [password, setPassword] = useState('');
-  const [avatar, setAvatar] = useState(profile.avatar || '');
-  const [photoError, setPhotoError] = useState('');
-  const linked = Boolean(profile.id || record.profile_id);
-  const loadPhoto = file => {
-    if (!file) { setAvatar(''); setPhotoError(''); return; }
-    if (!/^image\//.test(file.type)) { setPhotoError('Choose an image file (JPG, PNG or WebP).'); return; }
-    if (file.size > 1.5 * 1024 * 1024) { setPhotoError('Choose an image smaller than 1.5 MB.'); return; }
-    const reader = new FileReader();
-    reader.onload = () => { setAvatar(String(reader.result || '')); setPhotoError(''); };
-    reader.readAsDataURL(file);
-  };
-  const invalid = name.trim().length < 2 || Boolean(photoError) || (linked && username.trim().length < 3) || (password !== '' && password.length < 10);
-  return <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="modal"><div className="modal-header"><div><div className="eyebrow">STAFF PROFILE · {dialog.row?.[0]}</div><h2>Update staff profile</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div><div className="record-fields special-fields">
-    <div className="account-photo-field wide-field"><span className="account-photo-preview">{avatar ? <img src={avatar} alt={`${name || 'Staff'} profile`} /> : initials(name || dialog.row?.[0])}</span><div className="account-photo-editor"><label>Profile picture<input type="file" accept="image/*" onChange={event => loadPhoto(event.target.files?.[0])} /><small>JPG, PNG or WebP up to 1.5 MB. Square images work best.</small></label>{avatar && <button type="button" className="secondary-button" onClick={() => { setAvatar(''); setPhotoError(''); }}>Remove photo</button>}</div></div>
-    <label>Full name<input value={name} onChange={event => setName(event.target.value)} placeholder="Staff member name" /></label>
-    <label>Phone number<input type="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="Phone number" /></label>
-    <label>Contact email<input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="name@company.com" /><small>Used as the staff contact email. Login email is managed separately.</small></label>
-    {linked && <><label>Username<input autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} placeholder="Login username" /></label><label>New password<input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Leave blank to keep current" /><small>Optional. Use at least 10 characters.</small></label></>}
-    {photoError && <p className="form-error wide-field">{photoError}</p>}
-    <p className="wide-field">{linked ? 'These details update the staff record and the linked login profile. Administrators can reset the password here.' : 'This staff record is not linked to a login account yet. Name, phone and contact email will be saved on the staff record.'}</p>
-  </div><div className="modal-footer"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={invalid} onClick={() => onConfirm({ staffProfile: { name: name.trim(), phone: phone.trim(), email: email.trim(), username: username.trim(), password, avatar } })}>Save profile</button></div></section></div>;
-}
-
-function StockMovementDialog({ dialog, onClose, onConfirm }) {
-  const items = moduleInfo.inventory.rows;
-  const suggested = String(dialog.row?.[3] || '').match(/(.+?)\s*[×x]\s*(\d+(?:\.\d+)?)/i);
-  const suggestedItem = items.find(item => suggested && item[0].toLowerCase().includes(suggested[1].trim().toLowerCase()));
-  const [itemId, setItemId] = useState(suggestedItem?.[1] || '');
-  const [quantity, setQuantity] = useState(suggested?.[2] || '1');
-  const [warehouse, setWarehouse] = useState('Main store');
-  const [note, setNote] = useState('');
-  const title = dialog.movement === 'issue' ? 'Issue materials to job' : 'Return unused materials';
-  return <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="modal"><div className="modal-header"><div><div className="eyebrow">MATERIAL REQUEST · {dialog.row?.[0]}</div><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div><div className="record-fields special-fields"><label className="wide-field">Inventory item<select value={itemId} onChange={event => setItemId(event.target.value)}><option value="">Choose item</option>{items.map(item => <option key={item[1]} value={item[1]}>{item[0]} · {item[1]}</option>)}</select></label><label>Quantity<input type="number" min="0.01" step="0.01" value={quantity} onChange={event => setQuantity(event.target.value)} /></label><label>Warehouse<input value={warehouse} onChange={event => setWarehouse(event.target.value)} /></label><label className="wide-field">Movement note<textarea rows={2} value={note} onChange={event => setNote(event.target.value)} placeholder="Optional issue / return note" /></label></div><div className="modal-footer"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!itemId || Number(quantity) <= 0} onClick={() => onConfirm({ movementPayload: { item_id: itemId, quantity: Number(quantity), requested_quantity: Number(suggested?.[2] || quantity), warehouse, note } })}>{dialog.movement === 'issue' ? 'Post stock issue' : 'Post stock return'}</button></div></section></div>;
-}
-
-function JobFinanceDialog({ dialog, isDemo, onClose, onConfirm }) {
-  const isInvoice = dialog.type === 'job-invoice'; const isCancel = dialog.type === 'job-cancel';
-  const [reason, setReason] = useState('');
-  const [subtotal, setSubtotal] = useState(''); const [charges, setCharges] = useState('0'); const [discount, setDiscount] = useState('0'); const [amountPaid, setAmountPaid] = useState('0');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10)); const [dueDate, setDueDate] = useState(''); const [paymentTerms, setPaymentTerms] = useState('Due on receipt'); const [paymentStatus, setPaymentStatus] = useState('Pending Payment'); const [paymentAmount, setPaymentAmount] = useState('0');
-  const total = Math.max(0, Number(subtotal || 0) + Number(charges || 0) - Number(discount || 0));
-  const workflow = JSON.parse(localStorage.getItem('tsg-demo-job-workflows') || '{}')[dialog.row?.[0]] || {};
-  const complete = !isDemo || Boolean(workflow.completionReportApproved && workflow.invoiceId);
-  const disabled = isCancel ? !reason.trim() : isInvoice ? !dueDate : (paymentStatus === 'Pending Payment' && !dueDate) || !complete;
-  return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}><section className="modal job-finance-modal"><div className="modal-header"><div><div className="eyebrow">JOB ORDER / {dialog.row?.[0]}</div><h2>{isCancel ? 'Cancel job order' : isInvoice ? 'Create job invoice' : 'Close job order'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div>{isCancel ? <div className="record-fields special-fields"><label className="wide-field">Reason for cancellation<textarea rows={4} required value={reason} onChange={e => setReason(e.target.value)} placeholder="Explain why this job is being cancelled" /></label></div> : isInvoice ? <div className="record-fields special-fields"><label>Job value<input type="number" value={subtotal} onChange={e => setSubtotal(e.target.value)} placeholder="0.00" /></label><label>Additional charges<input type="number" value={charges} onChange={e => setCharges(e.target.value)} /></label><label>Discount<input type="number" value={discount} onChange={e => setDiscount(e.target.value)} /></label><label>Invoice date<input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} /></label><label>Due date<input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)} /></label><label>Payment terms<select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)}><option>Due on receipt</option><option>7 days</option><option>15 days</option><option>30 days</option><option>Custom</option></select></label><label>Cash received<input type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} /></label><div className="job-total-preview"><span>Invoice total</span><b>MMK {total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b><small>{Number(amountPaid) >= total ? 'Paid in full' : Number(amountPaid) > 0 ? `Balance MMK ${(total - Number(amountPaid)).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : 'Payment pending'}</small></div></div> : <div className="record-fields special-fields"><div className={`job-checklist ${complete ? 'is-ready' : 'is-incomplete'}`}><b>{complete ? 'Ready to close' : 'Required before closing'}</b><span>{workflow.completionReportApproved || !isDemo ? '[x] Approved completion report' : '[ ] Approved completion report required'}</span><span>{workflow.invoiceId || !isDemo ? '[x] Invoice generated' : '[ ] Invoice required'}</span></div><label>Payment status<select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}><option>Pending Payment</option><option>Paid</option></select></label><label>{paymentStatus === 'Paid' ? 'Cash received' : 'Payment received so far'}<input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} /></label><label>Payment due date<input type="date" required={paymentStatus === 'Pending Payment'} value={dueDate} onChange={e => setDueDate(e.target.value)} /></label></div>}<div className="modal-footer"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={disabled} onClick={() => onConfirm(isCancel ? { reason } : isInvoice ? { customerId: dialog.row?._record?.customer_id || workflow.data?.customer_id, subtotal: Number(subtotal), charges: Number(charges), discount: Number(discount), total, amountPaid: Number(amountPaid), invoiceDate, dueDate, paymentTerms } : { paymentStatus, paymentAmount: Number(paymentAmount), dueDate })}>{isCancel ? 'Cancel job' : isInvoice ? 'Generate invoice' : 'Close job'}</button></div></section></div>;
-}
-
-function readFormValues(fields, row, columns, isDemo = false) {
-  const columnFor = { name: 'Customer', supplier_name: 'Supplier', contact_person: 'Contact', phone: 'Phone', email: 'Email', address: 'Location', tax_number: 'GST number', category: 'Category', job_id: 'Job order', customer_id: 'Customer', machine_id: 'Machine', quotation_id: 'Quotation', assigned_to: 'Assigned to', due_date: 'Due date', date: 'Date', status: 'Status', amount: 'Amount', description: 'Description', purpose: 'Purpose', work_done: 'Work done', findings: 'Findings', parts_used: 'Parts used' };
-  return Object.fromEntries(fields.map(field => {
-    let value = row?._record?.[field.key] ?? row?._record?.[field.key.replace(/_([a-z])/g, (_, char) => char.toUpperCase())];
-    if (value == null && row) { const index = columns.findIndex(label => label.toLowerCase() === String(columnFor[field.key] || field.label).toLowerCase()); if (index >= 0) value = row[index]; }
-    if (field.type === 'number' && typeof value === 'string') value = value.replace(/[^0-9.-]/g, '');
-    if (field.key === 'type' && typeof value === 'string') value = value.replace(/^cash\s+/i, '');
-    if (field.type === 'items') value = Array.isArray(value) ? value : emptyItems();
-    if (field.type === 'request-items') value = Array.isArray(value) ? value : emptyRequestItems();
-    if (field.type === 'request-items') value = Array.isArray(value) ? value : emptyRequestItems();
-    if (field.type === 'materials') value = Array.isArray(value) ? value : emptyMaterials();
-    if (field.type === 'lookup-multiple') value = Array.isArray(value) ? value : [];
-    if (field.type === 'file') value = '';
-    if (field.type === 'lookup' && value != null && isDemo) { const option = (sampleLookupOptions[field.resource] || []).find(([id, label]) => id === value || label === value); if (option) value = option[0]; }
-    if ((field.type === 'date' || field.type === 'datetime-local') && value) value = String(value).slice(0, field.type === 'date' ? 10 : 16);
-    return [field.key, value ?? field.defaultValue ?? ''];
-  }));
-}
-
-function Dialog({ dialog, columns, typedConfirm, setTypedConfirm, onClose, onConfirm, isDemo }) {
-  const formFields = dialog.fields?.length ? dialog.fields : formSchemas[dialog.module] || [];
-  const isDelete = dialog.type === 'delete' || dialog.type === 'force'; const isView = dialog.type === 'view'; const isForm = dialog.type === 'create' || dialog.type === 'edit'; const isAssign = dialog.type === 'assign-job'; const isJobNote = dialog.type === 'job-note'; const isAccountCreate = Boolean(dialog.accountMode); const isAccountPhoto = dialog.type === 'account-photo'; const isMyAccount = dialog.type === 'my-account'; const isReset = dialog.type === 'reset-password'; const isPayment = dialog.type === 'payment'; const isServiceReport = dialog.type === 'service-report'; const isAdvanceClaim = dialog.type === 'advance-claim'; const isSettleAdvance = dialog.type === 'settle-advance';
-  const [values, setValues] = useState(dialog.row || []);
-  const [fieldValues, setFieldValues] = useState(() => readFormValues(formFields || [], dialog.type === 'edit' ? dialog.row : null, columns, isDemo));
-  const isSchemaCreate = (isForm && !isAccountCreate || isAssign) && Boolean(formFields?.length);
-  const itemRows = fieldValues.items || [];
-  const subtotal = itemRows.reduce((sum, item) => sum + Math.max(0, Number(item.qty || 0) * Number(item.unit_price || 0) - Number(item.discount || 0)), 0);
-  const tax = subtotal * Number(fieldValues.tax_rate || 0) / 100;
-  const [accountName, setAccountName] = useState(''); const [accountUsername, setAccountUsername] = useState(''); const [accountRole, setAccountRole] = useState('Staff'); const [accountPassword, setAccountPassword] = useState(''); const [accountEmail, setAccountEmail] = useState('');
-  const [accountPhoto, setAccountPhoto] = useState(''); const [photo, setPhoto] = useState(() => rowAvatar(dialog.row, isDemo) || dialog.user?.avatar || ''); const [photoError, setPhotoError] = useState('');
-  const [myName, setMyName] = useState(dialog.user?.name || ''); const [myUsername, setMyUsername] = useState(dialog.user?.username || String(dialog.user?.name || '').toLowerCase().replace(/\s+/g, '.')); const [myPassword, setMyPassword] = useState(''); const [myPasswordConfirm, setMyPasswordConfirm] = useState('');
-  const myAccountInvalid = isMyAccount && (myName.trim().length < 2 || myUsername.trim().length < 3 || Boolean(photoError) || (myPassword !== '' && (myPassword.length < 10 || myPassword !== myPasswordConfirm)));
-  const loadPhoto = (file, apply) => { if (!file) { apply(''); setPhotoError(''); return; } if (!/^image\//.test(file.type)) { setPhotoError('Choose an image file (JPG, PNG or WebP).'); return; } if (file.size > 1.5 * 1024 * 1024) { setPhotoError('Choose an image smaller than 1.5 MB.'); return; } const reader = new FileReader(); reader.onload = () => { apply(String(reader.result || '')); setPhotoError(''); }; reader.readAsDataURL(file); };
-  const [password, setPassword] = useState('');
-  const invoiceDue = dialog.type === 'payment' ? Number(dialog.row?._record?.outstanding_value ?? String(dialog.row?.[columns ? columns.indexOf('Outstanding') : -1] ?? '').replace(/[^0-9.]/g, '')) || 0 : 0;
-  const [amount, setAmount] = useState(() => (invoiceDue ? String(invoiceDue) : '')); const [method, setMethod] = useState('Bank transfer'); const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [workDone, setWorkDone] = useState(''); const [findings, setFindings] = useState(''); const [customerComplaint, setCustomerComplaint] = useState(''); const [testResults, setTestResults] = useState(''); const [recommendations, setRecommendations] = useState(''); const [partsUsed, setPartsUsed] = useState(''); const [customerName, setCustomerName] = useState(''); const [technicianName, setTechnicianName] = useState(''); const [customerSignature, setCustomerSignature] = useState(''); const [technicianSignature, setTechnicianSignature] = useState(''); const [reportPhotos, setReportPhotos] = useState([]); const [approvedByCustomer, setApprovedByCustomer] = useState(false); const [serviceStartedAt, setServiceStartedAt] = useState(new Date(Date.now() - 3600000).toISOString().slice(0, 16)); const [serviceFinishedAt, setServiceFinishedAt] = useState(new Date().toISOString().slice(0, 16));
-  const [jobNote, setJobNote] = useState('');
-  const [claimAmount, setClaimAmount] = useState(''); const [claimCategory, setClaimCategory] = useState('Job'); const [claimDescription, setClaimDescription] = useState(''); const [claimSupplier, setClaimSupplier] = useState('');
-  const lookupResources = [...new Set((formFields || []).filter(field => ['lookup', 'lookup-multiple', 'materials'].includes(field.type)).map(field => field.resource))];
-  const lookupsQuery = useQuery({ queryKey: ['form-lookups', lookupResources], queryFn: async () => Object.fromEntries(await Promise.all(lookupResources.map(async resource => [resource, await apiRequest(`/${resource}?limit=100`)]))), enabled: Boolean(!isDemo && lookupResources.length), staleTime: 60_000 });  useEffect(() => {
-    if (!['jobs', 'quotations', 'invoices'].includes(dialog.module)) return;
-    const findRecord = (resource, id) => lookupRecords(resource, lookupsQuery.data?.[resource]).find(record => String(record.id ?? record.uuid ?? record.code ?? record.number) === String(id));
-    let customer = fieldValues.customer_id ? findRecord('customers', fieldValues.customer_id) : null;
-    if (!customer && isDemo && fieldValues.customer_id) { const row = moduleInfo.customers.rows.find(item => item[1] === fieldValues.customer_id); if (row) customer = { id: row[1], name: row[0], contact_person: row[2], address: row[4] }; }
-    let quotation = fieldValues.quotation_id ? findRecord('quotations', fieldValues.quotation_id) : null;
-    if (!quotation && isDemo && fieldValues.quotation_id) { const row = moduleInfo.quotations.rows.find(item => item[0] === fieldValues.quotation_id && String(item[5]).toLowerCase() === 'approved'); if (row) { const customerRow = moduleInfo.customers.rows.find(item => item[0] === row[1]); quotation = { id: row[0], number: row[0], date: row[2], total: Number(String(row[4]).replace(/[^0-9.]/g, '')), status: 'Approved', customer_id: customerRow?.[1], customer_name: row[1] }; } }
-    const quoteCustomer = quotation?.customer_id ? findRecord('customers', quotation.customer_id) : null;
-    customer = quoteCustomer || customer;
-    const updates = {};
-    if (customer) { updates.customer_name = customer.name || customer.legal_name || customer.customer_name || ''; updates.billing_address = customer.billing_address || customer.address || ''; updates.contact_person = customer.contact_person || customer.contact_name || ''; updates.phone = customer.phone || customer.phone_number || ''; updates.email = customer.email || ''; updates.address = customer.address || customer.billing_address || ''; }
-    if (quotation && dialog.module === 'jobs') { updates.quotation_date = String(quotation.date || quotation.quotation_date || quotation.created_at || '').slice(0, 10); updates.quotation_amount = String(quotation.total ?? quotation.amount ?? quotation.total_amount ?? ''); updates.customer_approval = 'Approved'; updates.payment_terms = quotation.payment_terms || ''; updates.quoted_items = quotation.items || quotation.line_items || []; if (quotation.customer_id) updates.customer_id = quotation.customer_id; }
-    if (Object.keys(updates).length) setFieldValues(old => ({ ...old, ...updates, ...(customer?.address && !old.site_location ? { site_location: customer.address } : {}) }));
-  }, [dialog.module, fieldValues.customer_id, fieldValues.quotation_id, lookupsQuery.data, isDemo]);
-  const formInvalid = (formFields || []).some(field => {
-    const value = fieldValues[field.key];
-    const empty = field.type === 'file' ? !(value instanceof File) && !(Array.isArray(value) && value.length) : field.type === 'lookup-multiple' ? !Array.isArray(value) || !value.length : Array.isArray(value) ? !value.some(item => item.description || item.item_id) : String(value ?? '').trim() === '';
-    if (field.type === 'request-items' && field.required && (!value.some(item => item.item_id && Number(item.qty) > 0) || value.some(item => item.item_id && Number(item.qty) <= 0))) return true;
-    if (field.required && empty) return true;
-    if (field.type === 'items' && field.required && (!Array.isArray(value) || !value.some(item => item.description?.trim() && Number(item.qty) > 0 && Number(item.unit_price) >= 0))) return true;
-    if (['cash-claims', 'my-expense-claims'].includes(dialog.module) && field.key === 'job_id' && fieldValues.category === 'Job' && empty) return true;
-    if (['cash-claims', 'my-expense-claims'].includes(dialog.module) && field.key === 'office_type' && fieldValues.category === 'Office' && empty) return true;
-    if (['cash-claims', 'my-expense-claims'].includes(dialog.module) && field.key === 'advance_id' && fieldValues.payment_source === 'From advance' && empty) return true;
-    if (!field.money && field.type === 'number' && value !== '' && value != null && Number(value) < Number(field.min || 0)) return true;
-    if (field.type === 'email' && value && !/^\S+@\S+\.\S+$/.test(value)) return true;
-    if (dialog.module === 'suppliers' && field.key === 'phone' && !String(value || '').trim() && !String(fieldValues.email || '').trim()) return true;
-    if (dialog.module === 'customers' && field.key === 'phone' && !String(value || '').trim() && !String(fieldValues.email || '').trim()) return true;
-    if (dialog.module === 'quotations' && field.key === 'valid_until' && fieldValues.date && value && value < fieldValues.date) return true;
-    if (dialog.module === 'jobs' && field.key === 'planned_end_date' && fieldValues.planned_start_date && value && value < fieldValues.planned_start_date) return true;
-    if (['cash-claims', 'my-expense-claims'].includes(dialog.module) && field.key === 'receipt_file' && !(value instanceof File) && !String(fieldValues.exception_reason || '').trim()) return true;
-    return false;
-  });
-  const specialLabel = isJobNote ? 'JOB NOTE' : isPayment ? 'RECORD CUSTOMER PAYMENT' : isAdvanceClaim ? 'SETTLE STAFF ADVANCE' : isSettleAdvance ? 'CASH SETTLEMENT' : 'COMPLETION REPORT';
-  const recordDetails = isView && dialog.row?._record ? Object.entries(dialog.row._record).filter(([key, value]) => !key.startsWith('_') && value != null && value !== '') : null;
-  const viewColumns = recordDetails ? recordDetails.map(([key]) => key.replaceAll('_', ' ')) : columns;
-  const viewValues = recordDetails ? recordDetails.map(([, value]) => typeof value === 'object' ? JSON.stringify(value) : String(value)) : values;
-  const specialTitle = isJobNote ? `Add note · ${dialog.row?.[0]}` : isPayment ? `Payment · ${dialog.row?.[0]}` : isAdvanceClaim ? `New claim · ${dialog.row?.[0]}` : isSettleAdvance ? `Settle · ${dialog.row?.[0]}` : `Complete job · ${dialog.row?.[0]}`;
-  return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}><section className="modal"><div className="modal-header"><div><div className="eyebrow">{isMyAccount ? 'MY ACCOUNT' : isAccountPhoto ? 'ACCOUNT PROFILE' : isPayment || isServiceReport || isAdvanceClaim || isSettleAdvance || isJobNote ? specialLabel : dialog.type === 'force' ? 'FORCE DELETE' : isReset ? 'ADMIN PASSWORD RESET' : isDelete ? 'DELETE RECORD' : isView ? 'RECORD DETAILS' : 'RECORD'}</div><h2>{isMyAccount ? 'Manage my account' : isAccountPhoto ? `Profile picture · ${dialog.row?.[0]}` : isPayment || isServiceReport || isAdvanceClaim || isSettleAdvance || isJobNote ? specialTitle : isAccountCreate ? 'Create user account' : isAssign ? dialog.title : dialog.type === 'create' ? (dialog.title || 'Create new record') : dialog.type === 'edit' ? 'Edit record' : isReset ? `Reset password · ${dialog.row?.[0]}` : isView ? dialog.row?.[0] : isDelete ? 'Delete this record?' : 'Force delete this record?'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div>{isAccountCreate && <div className="record-fields special-fields"><label>Full name<input value={accountName} onChange={e => setAccountName(e.target.value)} placeholder="Staff member name" /></label><label>Email<input type="email" autoComplete="off" value={accountEmail} onChange={e => setAccountEmail(e.target.value)} placeholder="name@company.com" /></label><label>Username<input autoComplete="off" value={accountUsername} onChange={e => setAccountUsername(e.target.value)} placeholder="Unique username" /></label><label>Role<select value={accountRole} onChange={e => setAccountRole(e.target.value)}><option>Staff</option><option>Admin</option></select></label><label>Initial password<input type="password" autoComplete="new-password" value={accountPassword} onChange={e => setAccountPassword(e.target.value)} placeholder="At least 10 characters" /></label><label className="wide-field">Profile picture<input type="file" accept="image/*" onChange={e => loadPhoto(e.target.files?.[0], setAccountPhoto)} /><small>Optional. JPG, PNG or WebP up to 1.5 MB.</small></label>{accountPhoto && <div className="account-photo-field wide-field"><span className="account-photo-preview"><img src={accountPhoto} alt="Profile preview" /></span><button type="button" className="secondary-button" onClick={() => setAccountPhoto('')}>Remove photo</button></div>}{photoError && <p className="form-error wide-field">{photoError}</p>}<p className="wide-field">Only Admin can create accounts and reset passwords. There is no self-service password recovery.</p></div>}{isAccountPhoto && <div className="account-photo-editor"><span className="account-photo-preview">{photo ? <img src={photo} alt={`${dialog.row?.[0]} profile`} /> : initials(dialog.row?.[0])}</span><label>Profile picture<input type="file" accept="image/*" onChange={e => loadPhoto(e.target.files?.[0], setPhoto)} /><small>JPG, PNG or WebP up to 1.5 MB. A square image works best.</small></label>{photoError && <p className="form-error">{photoError}</p>}{photo && <button type="button" className="secondary-button" onClick={() => { setPhoto(''); setPhotoError(''); }}>Remove photo</button>}</div>}{isMyAccount && <div className="record-fields special-fields"><label>Full name<input value={myName} onChange={e => setMyName(e.target.value)} placeholder="Your full name" /></label><label>Username<input autoComplete="off" value={myUsername} onChange={e => setMyUsername(e.target.value)} placeholder="Your username" /></label><label>Role<input value={dialog.user?.role || 'Admin'} readOnly /></label><label>New password<input type="password" autoComplete="new-password" value={myPassword} onChange={e => setMyPassword(e.target.value)} placeholder="Leave blank to keep current" /></label><label>Confirm new password<input type="password" autoComplete="new-password" value={myPasswordConfirm} onChange={e => setMyPasswordConfirm(e.target.value)} placeholder="Repeat new password" /></label><label className="wide-field">Profile picture<input type="file" accept="image/*" onChange={e => loadPhoto(e.target.files?.[0], setPhoto)} /><small>Optional. JPG, PNG or WebP up to 1.5 MB.</small></label>{photo && <div className="account-photo-field wide-field"><span className="account-photo-preview"><img src={photo} alt="Your profile preview" /></span><button type="button" className="secondary-button" onClick={() => { setPhoto(''); setPhotoError(''); }}>Remove photo</button></div>}{photoError && <p className="form-error wide-field">{photoError}</p>}{myPassword && myPasswordConfirm && myPassword !== myPasswordConfirm && <p className="form-error wide-field">Passwords do not match.</p>}{myPassword && myPassword.length < 10 && <p className="form-error wide-field">Use at least 10 characters for the new password.</p>}<p className="wide-field">You are editing your own administrator account. Leave the password fields blank to keep your current password.</p></div>}{isReset && <div className="record-fields reset-fields"><label>New temporary password<input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter a temporary password" /></label><p>The user will need to contact an administrator if they forget this password.</p></div>}{isPayment && dialog.row?._record && <div className="payment-summary"><span>Invoice <b>{dialog.row._record.invoice_amount || '—'}</b></span><span>Received <b>{dialog.row._record.received || '—'}</b></span><span>Outstanding <b>{dialog.row._record.outstanding || '—'}</b></span></div>}{isPayment && <div className="record-fields special-fields"><label>Amount<input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></label><label>Payment date<input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} /></label><label>Payment method<select value={method} onChange={e => setMethod(e.target.value)}><option>Bank transfer</option><option>Cash</option><option>Cheque</option><option>UPI</option></select></label><p>Recording a payment also creates the matching cash-in entry.</p></div>}{(isAdvanceClaim || isSettleAdvance) && <div className="record-fields special-fields"><label>Amount<input type="number" value={claimAmount} onChange={e => setClaimAmount(e.target.value)} placeholder="0.00" /></label>{isAdvanceClaim && <><label>Date<input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} /></label><label>Category<select value={claimCategory} onChange={e => setClaimCategory(e.target.value)}><option>Job</option><option>Office</option></select></label><label>Supplier<input value={claimSupplier} onChange={e => setClaimSupplier(e.target.value)} placeholder="Supplier name" /></label><label className="wide-field">Description<textarea value={claimDescription} onChange={e => setClaimDescription(e.target.value)} rows={2} placeholder="Describe the expense" /></label></>}<p className="wide-field">{isAdvanceClaim ? "The voucher will be linked to this advance and submitted for approval." : "Enter the cash returned to close or reduce this advance."}</p></div>}{isJobNote && <div className="record-fields special-fields"><label className="wide-field">Work note<textarea rows={4} value={jobNote} onChange={e => setJobNote(e.target.value)} placeholder="Add a work update or handover note" /></label></div>}{isServiceReport && <div className="record-fields special-fields"><label>Service start<input type="datetime-local" value={serviceStartedAt} onChange={e => setServiceStartedAt(e.target.value)} /></label><label>Service finish<input type="datetime-local" value={serviceFinishedAt} onChange={e => setServiceFinishedAt(e.target.value)} /></label><label className="wide-field">Customer complaint / reported issue<textarea required value={customerComplaint} onChange={e => setCustomerComplaint(e.target.value)} rows={2} placeholder="What issue did the customer report?" /></label><label className="wide-field">Inspection findings<textarea required value={findings} onChange={e => setFindings(e.target.value)} rows={2} placeholder="Diagnosis, measurements and observations" /></label><label className="wide-field">Work completed<textarea required value={workDone} onChange={e => setWorkDone(e.target.value)} rows={3} placeholder="Describe the work and corrective actions" /></label><label className="wide-field">Materials used<textarea value={partsUsed} onChange={e => setPartsUsed(e.target.value)} rows={2} placeholder="Parts and quantities used" /></label><label className="wide-field">Test results / readings<textarea required value={testResults} onChange={e => setTestResults(e.target.value)} rows={2} placeholder="Record operating checks and readings" /></label><label className="wide-field">Recommendations<textarea value={recommendations} onChange={e => setRecommendations(e.target.value)} rows={2} placeholder="Recommended follow-up work" /></label><label>Technician name<input required value={technicianName} onChange={e => setTechnicianName(e.target.value)} placeholder="Technician completing this report" /></label><label>Customer representative<input required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Name and designation" /></label><label>Technician signature<input type="file" required accept="image/*,.pdf" onChange={e => setTechnicianSignature(e.target.files?.[0] || '')} /></label><label>Customer sign-off<input type="file" required accept="image/*,.pdf" onChange={e => setCustomerSignature(e.target.files?.[0] || '')} /></label><label className="wide-field">Job photos / attachments<input type="file" multiple accept="image/*,.pdf" onChange={e => setReportPhotos(Array.from(e.target.files || []))} /><small>{reportPhotos.length ? `${reportPhotos.length} file(s) selected` : 'Attach before, during or after photos if available'}</small></label><label className="approval-check"><input type="checkbox" checked={approvedByCustomer} onChange={e => setApprovedByCustomer(e.target.checked)} />Customer accepted the completed service</label><p className="wide-field">Submitting sends this report to the service manager for review. The job stays open until approval.</p></div>}{isDelete && (dialog.type === 'force' ? <><div className="warning-box force-warning"><ShieldCheck size={19} /><p><b>This action is logged and recoverable.</b><br />Dependants and related records may also be affected. Review the record before proceeding.</p></div><div className="confirm-preview"><b>Record to delete</b><span>{dialog.row?.[0]} · {dialog.row?.[1]}</span></div><label className="confirm-label">Type <b>DELETE</b> to confirm<input value={typedConfirm} onChange={e => setTypedConfirm(e.target.value)} placeholder="Type DELETE" autoFocus /></label></> : <div className="warning-box"><div className="warning-symbol">!</div><p><b>This record will be moved to the Recycle Bin.</b><br />It can be restored later by an administrator.</p></div>)}{(isView || (isForm && !isAccountCreate && !isSchemaCreate)) && <div className="record-fields">{columns.map((col, i) => <label key={col}>{col}{isForm ? <input value={values[i] === '—' ? '' : values[i] || ''} onChange={e => setValues(old => old.map((v, j) => i === j ? e.target.value : v))} placeholder={`Enter ${col.toLowerCase()}`} /> : <div className="detail-value">{values[i] || '—'}</div>}</label>)}{isView && <AttachmentGallery groups={collectAttachments(dialog.row?._record)} title="Uploaded files" />}</div>}{isSchemaCreate && <div className="record-fields schema-fields">{formFields.filter(field => !(['cash-claims', 'my-expense-claims'].includes(dialog.module) && ((field.key === 'job_id' && fieldValues.category === 'Office') || (field.key === 'office_type' && fieldValues.category !== 'Office') || (field.key === 'advance_id' && fieldValues.payment_source !== 'From advance')))).map(field => <FormField key={field.key} field={field} value={fieldValues[field.key]} options={['lookup', 'lookup-multiple', 'materials'].includes(field.type) ? lookupOptions(field.resource, lookupsQuery.data?.[field.resource], field, isDemo) : []} onChange={value => setFieldValues(old => ({ ...old, [field.key]: value }))} />)}{(dialog.module === "quotations" || dialog.module === "invoices") && <div className="total-preview"><span>Subtotal <b>MMK {subtotal.toLocaleString("en-US", { maximumFractionDigits: 2 })}</b></span><span>Tax <b>MMK {tax.toLocaleString("en-US", { maximumFractionDigits: 2 })}</b></span><span>Total <b>MMK {(subtotal + tax).toLocaleString("en-US", { maximumFractionDigits: 2 })}</b></span></div>}</div>}<div className="modal-footer"><button className="secondary-button" onClick={onClose}>Cancel</button>{isView && canPrintDocument(dialog.module, dialog.row) && <button className="secondary-button" onClick={() => canPrintDocument(dialog.module, dialog.row) ? printRecordDocument(dialog.module, dialog.row, columns) : printReport(dialog.row?.[0] || 'Record', viewColumns, [viewValues], {})}><Download size={15} />{canPrintDocument(dialog.module, dialog.row) ? `Download ${documentLabel(dialog.module)} PDF` : 'Print / Save PDF'}</button>}{!isView && <button className={dialog.type === 'force' ? 'danger-button' : 'primary-button'} disabled={(dialog.type === 'force' && typedConfirm !== 'DELETE') || myAccountInvalid || (isReset && password.length < 10) || (isAccountCreate && (accountName.trim().length < 2 || !/^\S+@\S+\.\S+$/.test(accountEmail) || accountUsername.trim().length < 3 || accountPassword.length < 10)) || (isAdvanceClaim && !claimDescription.trim()) || (isJobNote && !jobNote.trim()) || (isServiceReport && (!workDone.trim() || !findings.trim() || !customerComplaint.trim() || !testResults.trim() || !technicianName.trim() || !customerName.trim() || !customerSignature || !technicianSignature || !approvedByCustomer || serviceFinishedAt < serviceStartedAt)) || (isSchemaCreate && formInvalid)} onClick={() => { if (isSchemaCreate) { dialog.displayPayload = { ...fieldValues }; const payload = Object.fromEntries((formFields || []).filter(field => field.type !== 'section' && field.type !== 'readonly').map(field => [field.key, fieldValues[field.key]])); if (dialog.module === "quotations" || dialog.module === "invoices") { payload.subtotal = subtotal; payload.tax = tax; payload.total = subtotal + tax; } dialog.payload = payload; dialog.values = toDisplayRow(columns, { ...dialog.displayPayload, ...payload }); } if (isForm && !isAccountCreate && !isSchemaCreate) dialog.values = values; if (isAccountCreate) { dialog.account = { name: accountName, email: accountEmail, username: accountUsername, role: accountRole, password: accountPassword, avatar: accountPhoto }; dialog.values = [accountName, accountUsername || accountEmail.split('@')[0], accountRole, 'Never', 'Today', 'Active']; } if (isAccountPhoto) { dialog.photo = photo; dialog.accountUsername = dialog.row?.[1]; } if (isMyAccount) { dialog.myAccount = { name: myName.trim(), username: myUsername.trim(), avatar: photo, password: myPassword }; } if (isReset) dialog.password = password; if (isPayment) dialog.payment = { amount: Number(amount), date: paymentDate, method }; if (isAdvanceClaim) dialog.claim = { amount: Number(claimAmount), date: paymentDate, category: claimCategory, supplier_name: claimSupplier, description: claimDescription, advance_id: dialog.row?._id || dialog.row?.[0] }; if (isSettleAdvance) dialog.amount = Number(claimAmount); if (isJobNote) dialog.note = jobNote; if (isServiceReport) dialog.serviceReport = { work_done: workDone, findings, customer_complaint: customerComplaint, test_results: testResults, recommendations, parts_used: partsUsed, technician_name: technicianName, customer_name: customerName, customer_approval: approvedByCustomer, technician_signature: technicianSignature, customer_signature: customerSignature, attachments: reportPhotos, started_at: serviceStartedAt, finished_at: serviceFinishedAt, delivered_at: new Date().toISOString() }; onConfirm(); }}>{isAccountCreate ? 'Create account' : isAccountPhoto ? 'Save photo' : isMyAccount ? 'Save my account' : isAssign ? 'Save assignment' : isJobNote ? 'Save note' : dialog.type === 'create' ? (dialog.title || 'Create record') : dialog.type === 'edit' ? 'Save changes' : isReset ? 'Reset password' : isPayment ? 'Record payment' : isServiceReport ? 'Save completion report' : isAdvanceClaim ? 'Submit claim' : isSettleAdvance ? 'Settle advance' : isDelete ? 'Delete record' : 'Force delete'}</button>}</div></section></div>;
-}
-
-function Reports() { return <><div className="page-heading module-heading"><div><div className="eyebrow">INSIGHTS & EXPORTS</div><h1>Reports</h1><p>Understand job performance, cash flow and operating costs.</p></div><button className="secondary-button" onClick={() => window.print()}><Download size={15} /> Export report</button></div><div className="report-cards">{[['Income & expense', 'Compare invoiced income with approved expenses.', 'MMK 1,248,000', 'income'], ['Job profitability', 'Invoice total minus job expenses and parts cost.', 'MMK 324,000', 'profit'], ['Cash balance', 'Opening balance plus cash in less cash out.', 'MMK 864,000', 'cash']].map(([title, desc, amount, key]) => <section className="panel report-card" key={title}><div className="report-card-top"><span className={`report-icon ${key}`}><Activity size={18} /></span><button className="icon-button" aria-label={`Export ${title}`}><Download size={16} /></button></div><h2>{title}</h2><p>{desc}</p><strong>{amount}</strong><span className="report-period">November 2026 <ArrowUpRight size={13} /></span></section>)}</div><section className="panel report-table-panel"><div className="panel-heading"><div><h2>Available reports</h2><p>Choose a report to view details or export your filtered data.</p></div><button className="select-period">This month <ChevronDown size={14} /></button></div>{[['Income and expense', 'Payments received, approved vouchers and supplier payments'], ['Per-job profitability', 'Invoice total, job expenses and parts cost by job'], ['Cash entries and balance', 'Cash in, cash out and calculated net balance'], ['Advance statement', 'Advance issued, vouchers claimed and settlement balance']].map(([title, desc]) => <div className="report-row" key={title}><div className="report-row-icon"><FileDown size={16} /></div><div><b>{title}</b><span>{desc}</span></div><button className="secondary-button" onClick={() => window.print()}>View report <ArrowRight size={14} /></button></div>)}</section></>;
-}
-
-const sampleLookupOptions = {
-  inventory: [['FLT-0041', 'Air filter assembly'], ['BRG-0012', 'Bearing 6205 ZZ'], ['OIL-0008', 'Compressor oil 5L']],
-  'fixed-assets': [['FA-0008', 'Field service van'], ['FA-0007', 'Pressure testing kit']],
-  customers: [['CUS-0018', 'Eastern Hydro Works'], ['CUS-0017', 'Meridian Foods Ltd.'], ['CUS-0016', 'Bluepeak Manufacturing'], ['CUS-0015', 'Aster Cold Storage']],
-  machines: [['MCH-0012', 'Compressor 2 · Atlas X90'], ['MCH-0011', 'Chiller 1 · CoolPro 450']],
-  quotations: [['QT-2026-0140', 'QT-2026-0140 · Bluepeak · Approved']],
-  jobs: [['JO-2026-0098', 'JO-2026-0098 · Eastern Hydro'], ['JO-2026-0097', 'JO-2026-0097 · Meridian Foods']],
-  staff: [['ST-0012', 'Arjun Nair'], ['ST-0009', 'Ravi Kumar']],
-  suppliers: [['SUP-0004', 'Prime Industrial Supply'], ['SUP-0003', 'Southline Components']],
-  advances: [['ADV-2026-0018', 'ADV-2026-0018 · Arjun Nair']],
-};
-function lookupOptions(resource, response, field = {}, isDemo = false) {
-  const raw = Array.isArray(response) ? response : response?.items || response?.data || response?.results || [];
-  if (raw.length) return raw.filter(record => resource !== 'quotations' || ['approved', 'accepted'].includes(String(record.status || '').toLowerCase())).filter(record => !field.allowedStatuses?.length || field.allowedStatuses.includes(String(record.status || '').toLowerCase())).map(record => ({ value: record.id ?? record.uuid ?? record.code ?? record.number, label: record.name || record.legal_name || record.legal_company_name || record.title || record.number || record.code || record.username || String(record.id) }));
-  if (!isDemo) return [];
-  return (sampleLookupOptions[resource] || []).map(([value, label]) => ({ value, label }));
-}
-function lookupRecords(resource, response) { return Array.isArray(response) ? response : response?.items || response?.data || response?.results || []; }
-function FormField({ field, value, onChange, options = [] }) {
-  const required = field.required || false;
-  if (field.type === 'section') return <div className="form-section-heading">{field.label}</div>;
-  if (field.type === 'readonly') return <label className="form-field autofilled-field">{field.label}<input value={value || ''} readOnly aria-readonly="true" placeholder={field.placeholder || 'Filled automatically'} /><small>Auto-filled from the selected record or calculated for you.</small></label>;
-  if (field.type === 'items') return <div className="line-items-field"><div className="line-items-title">{field.label}{required && <b>*</b>}</div>{(Array.isArray(value) ? value : []).map((item, index) => <div className="line-item-row priced-line" key={index}><input aria-label={`${field.label} item ${index + 1}`} required={required && index === 0} value={item.description || ''} placeholder="Service or material" onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, description: e.target.value } : entry))} /><input aria-label="Quantity" type="number" min="0.01" step="0.01" value={item.qty ?? 1} onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, qty: Number(e.target.value) } : entry))} /><input aria-label="Unit" value={item.unit || ''} placeholder="Unit" onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, unit: e.target.value } : entry))} /><input aria-label="Unit price" type="number" value={item.unit_price ?? ''} placeholder="Unit price" onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, unit_price: Number(e.target.value) } : entry))} /><input aria-label="Line discount" type="number" value={item.discount ?? 0} placeholder="Discount" onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, discount: Number(e.target.value) } : entry))} /><button type="button" className="row-action-danger" onClick={() => onChange(value.length > 1 ? value.filter((_, i) => i !== index) : [{ description: '', qty: 1, unit: 'pcs', unit_price: '', discount: 0 }])}>Remove</button></div>)}<button type="button" className="secondary-button add-line-item" onClick={() => onChange([...value, { description: '', qty: 1, unit: 'pcs', unit_price: '', discount: 0 }])}><Plus size={13} />Add line</button></div>;
-  if (field.type === 'request-items') return <div className="line-items-field"><div className="line-items-title">{field.label}{required && <b>*</b>}</div>{(Array.isArray(value) ? value : []).map((item, index) => <div className="line-item-row request-line" key={index}><select aria-label="Inventory item" value={item.item_id || ''} onChange={e => { const picked = options.find(option => option.value === e.target.value); onChange(value.map((entry, i) => i === index ? { ...entry, item_id: e.target.value, description: picked?.label || '' } : entry)); }}><option value="">Select inventory item</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><input aria-label="Description" value={item.description || ''} placeholder="Specification" onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, description: e.target.value } : entry))} /><input aria-label="Requested quantity" type="number" min="0.01" step="0.01" value={item.qty ?? 1} onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, qty: Number(e.target.value) } : entry))} /><input aria-label="Unit" value={item.unit || ''} onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, unit: e.target.value } : entry))} /><button type="button" className="row-action-danger" onClick={() => onChange(value.length > 1 ? value.filter((_, i) => i !== index) : [{ item_id: '', description: '', qty: 1, unit: 'pcs' }])}>Remove</button></div>)}<button type="button" className="secondary-button add-line-item" onClick={() => onChange([...value, { item_id: '', description: '', qty: 1, unit: 'pcs' }])}><Plus size={13} />Add requested item</button></div>;
-  if (field.type === 'lookup-multiple') return <label className="form-field">{field.label}{required && <b>*</b>}<select multiple required={required} value={Array.isArray(value) ? value : []} onChange={e => onChange(Array.from(e.target.selectedOptions, option => option.value))}>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
-  if (field.type === 'materials') return <div className="line-items-field materials-field"><div className="line-items-title">{field.label}</div>{(Array.isArray(value) ? value : []).map((item, index) => <div className="materials-row" key={index}><select aria-label="Inventory item" value={item.item_id || ''} onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, item_id: e.target.value } : entry))}><option value="">Choose inventory item</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{[['required_qty','Required'],['issued_qty','Issued'],['used_qty','Used'],['returned_qty','Returned']].map(([key,label]) => <label key={key}>{label}<input type="number" min="0" step="0.01" value={item[key] ?? 0} onChange={e => onChange(value.map((entry, i) => i === index ? { ...entry, [key]: Number(e.target.value) } : entry))} /></label>)}<button type="button" className="row-action-danger" onClick={() => onChange(value.length > 1 ? value.filter((_, i) => i !== index) : emptyMaterials())}>Remove</button></div>)}<button type="button" className="secondary-button add-line-item" onClick={() => onChange([...value, { item_id: '', required_qty: 1, issued_qty: 0, used_qty: 0, returned_qty: 0 }])}><Plus size={13} />Add material</button></div>;
-  if (field.type === 'textarea') return <label className="form-field wide-field">{field.label}{required && <b>*</b>}<textarea required={required} rows={3} value={value || ''} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`} onChange={e => onChange(e.target.value)} /></label>;
-  if (field.type === 'file') return <label className="form-field">{field.label}{required && <b>*</b>}<input type="file" required={required && !field.multiple} multiple={field.multiple} accept={field.accept} onChange={e => onChange(field.multiple ? Array.from(e.target.files || []) : e.target.files?.[0] || '')} /><small>{Array.isArray(value) && value.length ? `${value.length} file(s) selected` : value?.name || 'Choose a file to attach'}</small></label>;
-  if (field.type === 'select' || field.type === 'lookup') return <label className="form-field">{field.label}{required && <b>*</b>}<select required={required} value={value || ''} onChange={e => onChange(e.target.value)}><option value="">Choose {field.label.toLowerCase()}</option>{(field.options || options).map(option => { const entry = typeof option === 'string' ? { value: option, label: option } : option; return <option key={entry.value} value={entry.value}>{entry.label}</option>; })}</select></label>;
-  return <label className="form-field">{field.label}{required && <b>*</b>}<input type={field.type || 'text'} required={required} min={field.money ? undefined : field.min} max={field.money ? undefined : field.max} step={field.money ? undefined : field.step} value={value || ''} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`} onChange={e => onChange(e.target.value)} /></label>;
-}
-const reportCatalog = [
-  { id: 'job-register', title: 'Job Register', description: 'Jobs by customer, team, dates and lifecycle status.', icon: BriefcaseIcon, source: 'jobs' },
-  { id: 'quotation-register', title: 'Quotation Register', description: 'Quotes, expiry dates, totals and conversion status.', icon: FileDown, source: 'quotations' },
-  { id: 'machine-service-history', title: 'Machine Service History', description: 'Registered equipment and linked service activity.', icon: Wrench, source: 'machines' },
-  { id: 'invoice-register', title: 'Invoice Register', description: 'Invoices, due dates, received amounts and status.', icon: ReceiptTextIcon, source: 'invoices' },
-  { id: 'receivables-aging', title: 'Receivables Aging', description: 'Outstanding invoices and due dates for follow-up.', icon: Clock3, source: 'invoices' },
-  { id: 'cash-book', title: 'Cash Book', description: 'Receipts, payments and transaction references.', icon: WalletIcon, source: 'cash-claims' },
-  { id: 'income-expense', title: 'Income and Expense', description: 'Cash movements and expenses by period and category.', icon: Activity, source: 'cash-claims' },
-  { id: 'advance-outstanding', title: 'Advance Outstanding', description: 'Issued advances, claims and remaining balances.', icon: CircleHelp, source: 'my-advances' },
-  { id: 'expense-claims', title: 'Expense Claim Register', description: 'Employee claims, job links and approval status.', icon: ReceiptTextIcon, source: 'my-expense-claims' },
-  { id: 'inventory-stock', title: 'Inventory Stock', description: 'On-hand quantity, reorder level and stock state.', icon: BoxesIcon, source: 'inventory' },
-  { id: 'material-usage-job', title: 'Material Usage by Job', description: 'Material requests and issued quantities by job.', icon: PackageCheckIcon, source: 'material-requests' },
-  { id: 'supplier-register', title: 'Supplier Register', description: 'Supplier details, contact and active records.', icon: UsersIcon, source: 'suppliers' },
-  { id: 'fixed-asset-register', title: 'Fixed Asset Register', description: 'Asset cost, assignment, location and status.', icon: BriefcaseIcon, source: 'fixed-assets' },
-];
-function ReportsPage({ user, notify }) {
-  const isDemo = user.id?.startsWith('demo-');
-  const [reportId, setReportId] = useState(reportCatalog[0].id);
-  const [from, setFrom] = useState(''); const [to, setTo] = useState('');
-  const [customer, setCustomer] = useState(''); const [job, setJob] = useState(''); const [status, setStatus] = useState(''); const [staff, setStaff] = useState(''); const [supplier, setSupplier] = useState('');
-  const [remoteRows, setRemoteRows] = useState([]); const [loading, setLoading] = useState(false); const [loadError, setLoadError] = useState('');
-  const selected = reportCatalog.find(report => report.id === reportId) || reportCatalog[0];
-  const sourceInfo = moduleInfo[selected.source];
-  const filters = { from, to, customer, job, status, staff, supplier };
-  useEffect(() => {
-    if (isDemo) { setRemoteRows([]); setLoadError(''); return; }
-    let alive = true; setLoading(true); setLoadError('');
-    const params = new URLSearchParams({ page: '1', limit: '500' });
-    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
-    apiRequest(`/${apiEndpoint(selected.source)}?${params}`).then(result => { if (alive) setRemoteRows(normalizeList(result, sourceInfo.columns)); }).catch(error => { if (alive) setLoadError(error.message); }).finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [isDemo, selected.source, from, to, customer, job, status, staff, supplier]);
-  const sourceRows = isDemo ? readDemoRows(selected.source, sourceInfo) : remoteRows;
-  const dateColumn = sourceInfo.columns.findIndex(column => /date|due|issued|delivered|purchased|received/i.test(column));
-  const searchFilters = [customer, job, status, staff, supplier].filter(Boolean).map(value => value.toLowerCase());
-  const rows = sourceRows.filter(row => {
-    const joined = row.join(' ').toLowerCase();
-    if (!searchFilters.every(filter => joined.includes(filter))) return false;
-    if (dateColumn >= 0 && (from || to)) {
-      const raw = String(row[dateColumn] || ''); const parsed = new Date(raw);
-      if (!Number.isNaN(parsed.valueOf())) {
-        if (from && parsed < new Date(`${from}T00:00:00`)) return false;
-        if (to && parsed > new Date(`${to}T23:59:59`)) return false;
-      }
-    }
-    return true;
-  });
-  const clearFilters = () => { setFrom(''); setTo(''); setCustomer(''); setJob(''); setStatus(''); setStaff(''); setSupplier(''); };
-  const doExport = async format => {
-    const activeFilters = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
-    if (!isDemo) { try { await exportModule(`reports/${selected.id}`, format, activeFilters); } catch (error) { notify(error.message); } return; }
-    if (format === 'pdf') { printReport(selected.title, sourceInfo.columns, rows, activeFilters); return; }
-    const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const csv = [sourceInfo.columns, ...rows].map(row => row.map(quote).join(',')).join('\r\n');
-    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `TSG-${selected.id}-${new Date().toISOString().slice(0,10)}.csv`; anchor.click(); URL.revokeObjectURL(url);
-  };
-  return <><div className="page-heading module-heading"><div><div className="eyebrow">INSIGHTS & EXPORTS</div><h1>Reports</h1><p>Filter the register, review matching records, then export that result.</p></div><label className="report-picker">Report<select value={reportId} onChange={event => setReportId(event.target.value)}>{reportCatalog.map(report => <option key={report.id} value={report.id}>{report.title}</option>)}</select></label></div>
-    <section className="panel report-filters"><label>From<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={e => setTo(e.target.value)} /></label><label>Customer<input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Search customer" /></label><label>Job ID<input value={job} onChange={e => setJob(e.target.value)} placeholder="Search job" /></label><label>Status<input value={status} onChange={e => setStatus(e.target.value)} placeholder="Any status" /></label><label>Technician / employee<input value={staff} onChange={e => setStaff(e.target.value)} placeholder="Search staff" /></label><label>Supplier<input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Search supplier" /></label><button className="row-action-button" onClick={clearFilters}>Clear filters</button></section>
-    <div className="report-result-bar"><div><span className="report-row-icon"><selected.icon size={18} /></span><div><b>{selected.title}</b><small>{rows.length} matching records ? Generated {new Date().toLocaleString()}</small></div></div><div><button className="secondary-button" disabled={loading || (!isDemo && Boolean(loadError))} onClick={() => doExport('pdf')}><Download size={15} /> Print / Save PDF</button><button className="secondary-button" disabled={loading || (!isDemo && Boolean(loadError))} onClick={() => doExport('xlsx')}><FileDown size={15} /> {isDemo ? 'Download CSV' : 'Export Excel'}</button></div></div>
-    {loadError && <div className="query-error"><b>Couldn?t load report records.</b><span>{loadError}</span></div>}
-    <section className="panel report-table-panel report-preview"><div className="panel-heading"><div><h2>{selected.title}</h2><p>{selected.description}</p></div><span className="report-count">{loading ? 'Loading?' : `${rows.length} records`}</span></div><div className="table-scroll"><table className="data-table"><thead><tr>{sourceInfo.columns.map(column => <th key={column}>{column.toUpperCase()}</th>)}</tr></thead><tbody>{rows.map((row,index) => <tr key={`${row[0]}-${index}`}>{row.map((cell,i) => <td key={i}>{isStatus(cell) ? <Status value={cell} /> : cell}</td>)}</tr>)}{!loading && !rows.length && <tr><td className="empty-state" colSpan={sourceInfo.columns.length}>No records match these filters.</td></tr>}</tbody></table></div></section>
-  </>;
-}
-const documentLabels = { invoices: 'invoice', income: 'invoice', quotations: 'quotation', customers: 'customer report', jobs: 'job order', 'service-reports': 'service report', 'my-expense-claims': 'expense voucher', salary: 'salary slip' };
-function documentLabel(module) { return documentLabels[module] || 'record'; }
-function canPrintDocument(module, row) { return ['invoices', 'income', 'quotations', 'customers', 'jobs', 'service-reports', 'my-expense-claims'].includes(module) || (module === 'salary' && /^paid$/i.test(String(row?.[5] || ''))); }
-function humanizeKey(key) { return String(key || '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim().replace(/^./, char => char.toUpperCase()); }
-function printableValue(value) {
-  if (value == null || value === '') return '';
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (!text) return '';
-    if (/^data:[^,]*,/i.test(text) && text.length > 120) return '[attachment]';
-    if ((text.startsWith('[') || text.startsWith('{')) && text.length > 1) {
-      try { return printableValue(JSON.parse(text)); } catch { return text; }
-    }
-    return text;
-  }
-  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(value);
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (Array.isArray(value)) return value.map(item => printableValue(item)).filter(Boolean).join('\n');
-  if (typeof value === 'object') {
-    const name = value.description ?? value.name ?? value.item_name ?? value.item ?? value.title;
-    const qty = value.qty ?? value.quantity;
-    const unit = value.unit ?? value.uom;
-    const price = value.unit_price ?? value.price ?? value.rate;
-    if (name != null && (qty != null || price != null)) {
-      const parts = [String(name)];
-      if (qty != null && qty !== '') parts.push(`${printableValue(qty)}${unit ? ` ${unit}` : ''}`);
-      if (price != null && price !== '') parts.push(printableValue(price));
-      Object.entries(value).forEach(([key, entry]) => {
-        if (['description', 'name', 'item_name', 'item', 'title', 'qty', 'quantity', 'unit', 'uom', 'unit_price', 'price', 'rate'].includes(key)) return;
-        if (entry == null || entry === '' || entry === 0 || entry === false) return;
-        parts.push(`${humanizeKey(key)}: ${printableValue(entry)}`);
-      });
-      return parts.join(' — ');
-    }
-    const entries = Object.entries(value).filter(([, entry]) => entry != null && entry !== '');
-    return entries.map(([key, entry]) => `${humanizeKey(key)}: ${printableValue(entry)}`).join(' · ');
-  }
-  return String(value);
-}
-function printRecordDocument(module, row, columns) {
-  if (module === 'income') module = 'invoices';
-  let record = row?._record || {};
-  if (module === 'service-reports' && !Object.keys(record).length) { try { record = JSON.parse(localStorage.getItem('tsg-demo-service-report-records') || '[]').find(item => item.number === row?.[0]) || {}; } catch { record = {}; } }
-  const normalize = key => String(key || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const byColumn = Object.fromEntries(columns.map((column, index) => [normalize(column), row?.[index]]));
-  const get = (...keys) => {
-    for (const key of keys) {
-      const normalized = normalize(key);
-      const entry = Object.entries(record).find(([name]) => normalize(name) === normalized);
-      const value = entry?.[1] ?? byColumn[normalized];
-      if (value != null && value !== '') return value;
-    }
-    return '';
-  };
-  const text = (...keys) => printableValue(get(...keys));
-  const num = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0;
-  const lineItems = raw => {
-    let list = raw;
-    if (typeof list === 'string') { try { list = JSON.parse(list); } catch { list = []; } }
-    return (Array.isArray(list) ? list : []).filter(item => item && typeof item === 'object').map(item => {
-      const qty = item.qty ?? item.quantity ?? 1;
-      const unitPrice = item.unit_price ?? item.rate ?? item.price ?? '';
-      return { description: item.description || item.name || item.item_name || 'Item', qty, unit: item.unit || item.uom || '', unit_price: unitPrice, amount: item.amount ?? item.total ?? Math.max(0, num(qty) * num(unitPrice) - num(item.discount)) };
-    });
-  };
-  const longText = (heading, value) => value ? `${pdf.sectionTitle(heading)}<p class="text">${pdf.escLines(value)}</p>` : '';
-  const attention = text('attention', 'customer_contact', 'contact_person');
-  const customerBlock = () => pdf.block([['Attention:', attention && `:${attention}`], ['Address:', text('customer_address', 'billing_address', 'address')]], text('po_number') ? `PO - ${text('po_number')}` : '');
-  const number = String(row?.[0] || text('number') || 'Record');
-  let title = documentLabel(module).toUpperCase();
-  let body = '';
-
-  if (module === 'invoices' || module === 'quotations') {
-    const isInvoice = module === 'invoices';
-    title = isInvoice ? 'SERVICE INVOICE' : 'QUOTATION';
-    const total = num(get('total', 'grand_total', 'invoice_amount') || (isInvoice ? 0 : row?.[4]));
-    const subtotal = get('subtotal') !== '' ? num(get('subtotal')) : total;
-    const items = lineItems(get('items', 'line_items', 'invoice_items'));
-    const rows = items.length ? items : [{ description: text('job_title', 'description', 'scope_of_work') || 'Service charges', qty: 1, unit: '', unit_price: subtotal, amount: subtotal }];
-    const tax = num(get('tax')); const charges = num(get('additional_charges')); const discount = num(get('discount')); const rate = num(get('tax_rate'));
-    const totals = [];
-    if (tax || charges || discount) {
-      totals.push(['Sub Total', subtotal, '']);
-      if (charges) totals.push(['Additional Charges', charges, 'plain']);
-      if (discount) totals.push(['Discount', -discount, 'plain']);
-      if (tax) totals.push([`Tax${rate ? ` (${rate}%)` : ''}`, tax, 'plain']);
-    }
-    totals.push([isInvoice ? 'Net Invoice Amt' : 'Total Quotation Amt', total, 'total']);
-    const received = isInvoice ? num(get('amount_received')) : 0;
-    if (received > 0) { totals.push(['Amount Received', received, 'plain']); totals.push(['Balance Due', Math.max(0, total - received), 'plain']); }
-    const right = isInvoice
-      ? [['Work Order No.', text('job_number') && `:${text('job_number')}`], ['Invoice No.', `:${number}`], ['Invoice Date', pdf.formatDate(get('date', 'issued', 'invoice_date') || row?.[2])]]
-      : [['Quotation No.', `:${number}`], ['Date', pdf.formatDate(get('date') || row?.[2])], ['Valid Until', pdf.formatDate(get('valid_until') || row?.[3])]];
-    const terms = isInvoice
-      ? [['Payment Terms', text('payment_terms')], ['Due Date', pdf.formatDate(get('due_date') || row?.[3])]]
-      : [['Payment Terms', text('payment_terms')], ['Advance Payment', num(get('advance_percent')) ? `${num(get('advance_percent'))}%` : '']];
-    body = `<h1 class="doc-title">${title}</h1><div class="header">${pdf.kv([['Customer Name', text('customer_name', 'customer') || row?.[1], { strong: true, keep: true }], ['Machine/KVA/Sr', text('machine_label')]])}${pdf.kv(right, 'right')}</div>`
-      + customerBlock()
-      + pdf.jobType('Job Type', isInvoice ? (text('job_title') || text('description')) : text('job_type'))
-      + (isInvoice ? '' : longText('Scope of Work', text('scope_of_work')))
-      + pdf.itemsTable(rows, totals)
-      + (terms.some(([, value]) => value) ? `<div style="margin-top:6mm">${pdf.kv(terms)}</div>` : '')
-      + (isInvoice ? '' : longText('Terms & Conditions', text('terms')))
-      + (isInvoice ? `${pdf.signatory()}<div class="spacer"></div>${pdf.bankDetails()}` : `<div class="spacer"></div>${pdf.signatures(`${pdf.COMPANY.signatory.name}
-${pdf.COMPANY.signatory.title}`, 'Customer Acceptance')}`);
-  } else if (module === 'jobs') {
-    title = 'JOB ORDER';
-    const machine = text('machine_label') || [text('equipment_type'), text('equipment_model'), text('serial_number') && `Sr ${text('serial_number')}`].filter(Boolean).join(' · ');
-    const materials = lineItems(get('materials'));
-    body = `<h1 class="doc-title">${title}</h1><div class="header">${pdf.kv([['Customer Name', text('customer_name', 'customer') || String(row?.[1] || '').split(' · ')[0], { strong: true, keep: true }], ['Machine/KVA/Sr', machine], ['Site', text('site_location')]])}${pdf.kv([['Job Order No.', `:${number}`], ['Job Date', pdf.formatDate(get('job_date'))], ['Priority', text('priority') || row?.[4]], ['Status', text('status') || row?.[5]]], 'right')}</div>`
-      + customerBlock()
-      + pdf.jobType('Job Type', [text('job_type'), text('title')].filter(Boolean).join(' – '))
-      + longText('Job Description', text('description'))
-      + longText('Scope of Work', text('scope_of_work'))
-      + longText('Special Instructions', text('special_instructions'))
-      + `${pdf.sectionTitle('Schedule & Team')}${pdf.kv([['Planned Start', pdf.formatDate(get('planned_start_date'))], ['Expected Completion', pdf.formatDate(get('planned_end_date', 'due_date') || row?.[3])], ['Site Visit', pdf.formatDate(get('site_visit_date'))], ['Team Leader', text('team_leader_name')], ['Lead Technician', text('assigned_to_name') || row?.[2]], ['Responsibilities', text('responsibilities')]])}`
-      + (materials.length ? `${pdf.sectionTitle('Materials & Spare Parts')}${pdf.gridTable(['No.', 'Description', 'Qty', 'Unit'], materials.map((item, index) => [String(index + 1), item.description, printableValue(item.qty), item.unit]))}` : '')
-      + (num(get('job_amount')) || num(get('additional_charges')) ? `${pdf.sectionTitle('Charges')}${pdf.kv([['Quoted Amount', num(get('job_amount')) ? pdf.amount(get('job_amount')) : ''], ['Additional Charges', num(get('additional_charges')) ? pdf.amount(get('additional_charges')) : ''], ['Payment Terms', text('payment_terms')]])}` : '')
-      + longText('Notes', text('note'))
-      + '<div class="spacer"></div>' + pdf.signatures('Team Leader', 'Customer Acknowledgement');
-  } else if (module === 'service-reports') {
-    title = 'SERVICE REPORT';
-    const contact = text('customer_representative', 'contact_person');
-    body = `<h1 class="doc-title">${title}</h1><div class="header">${pdf.kv([['Customer Name', text('customer_name', 'customer') || row?.[2], { strong: true, keep: true }], ['Machine/KVA/Sr', text('machine_label', 'machine_name', 'equipment_type')], ['Technicians', text('technician_name', 'technicians', 'prepared_by') || row?.[4]]])}${pdf.kv([['Report No.', `:${number}`], ['Job Order No.', `:${text('job_order', 'job_number', 'job') || row?.[1] || ''}`], ['Service Date', pdf.formatDate(get('service_date', 'delivered', 'delivered_at') || row?.[3])], ['Status', text('status') || row?.[5]]], 'right')}</div>`
-      + pdf.block([['Contact:', contact && `:${contact}`], ['Address:', text('address', 'site_location')]])
-      + pdf.kv([['Started', printableValue(get('started_at')).replace('T', ' ')], ['Finished', printableValue(get('finished_at')).replace('T', ' ')]])
-      + longText('Customer Complaint', text('customer_complaint', 'complaint', 'reported_issue'))
-      + longText('Findings / Diagnosis', text('findings', 'diagnosis'))
-      + longText('Work Performed', text('work_done', 'work_performed'))
-      + longText('Parts Used', text('parts_used'))
-      + longText('Test Results', text('test_results'))
-      + longText('Recommendations', text('recommendations', 'remarks'))
-      + longText('Customer Acceptance', [text('customer_acceptance'), text('acceptance_notes')].filter(Boolean).join(' – '))
-      + '<div class="spacer"></div>' + pdf.signatures('Technician', 'Customer');
-  } else if (module === 'customers') {
-    title = 'CUSTOMER REPORT';
-    const machines = get('machines', 'equipment', 'installed_machines');
-    const jobs = get('jobs', 'job_orders', 'service_history');
-    const contact = text('contact_person', 'contact');
-    body = `<h1 class="doc-title">${title}</h1><div class="header">${pdf.kv([['Customer Name', text('name', 'customer') || row?.[0], { strong: true, keep: true }], ['Trading Name', text('trading_name')], ['Customer Type', text('customer_type')], ['Tax / Reg. No.', text('tax_number')]])}${pdf.kv([['Customer Code', `:${text('number', 'code') || row?.[1] || ''}`], ['Phone', text('phone')], ['Email', text('email')], ['Status', text('status') || row?.[5]]], 'right')}</div>`
-      + pdf.block([['Attention:', contact && `:${contact}`], ['Address:', text('billing_address', 'address', 'location')]])
-      + `${pdf.sectionTitle('Account')}${pdf.kv([['Payment Terms', text('payment_terms')], ['Credit Limit', num(get('credit_limit')) ? pdf.amount(get('credit_limit')) : ''], ['Service Sites', text('service_sites')], ['Other Contacts', text('additional_contacts')]], '')}`
-      + `${pdf.sectionTitle('Installed Equipment')}${Array.isArray(machines) && machines.length ? pdf.gridTable(['Machine', 'Type', 'Serial No.', 'Location'], machines.map(item => [item.name || item.machine_name || item.model, item.type || item.machine_type, item.serial_no || item.serial_number, item.location || item.site_location])) : `<p class="text">${pdf.esc(printableValue(machines) || row?.[3] || 'No equipment recorded.')}</p>`}`
-      + (Array.isArray(jobs) && jobs.length ? `${pdf.sectionTitle('Service History')}${pdf.gridTable(['Job', 'Date', 'Service', 'Status'], jobs.map(item => [item.number || item.job_number, pdf.formatDate(item.date || item.created_at), item.description || item.title, item.status]))}` : '')
-      + longText('Notes', text('notes'));
-  } else if (module === 'salary') {
-    title = 'SALARY SLIP';
-    const basic = num(get('basic_salary', 'basic') || get('net_pay') || row?.[3]); const allowances = num(get('allowances', 'allowance')); const deductions = num(get('deductions', 'deduction'));
-    const net = num(get('net_pay', 'net_salary', 'net') || row?.[3]) || Math.max(0, basic + allowances - deductions);
-    const lines = [{ description: 'Basic Salary', amount: basic }, ...(allowances ? [{ description: 'Allowances', amount: allowances }] : []), ...(deductions ? [{ description: 'Less: Deductions', amount: -deductions }] : [])].map(item => ({ ...item, qty: '', unit: '', unit_price: '' }));
-    body = `<h1 class="doc-title">${title}</h1><div class="header">${pdf.kv([['Employee Name', text('staff_name', 'staff_member', 'employee_name') || row?.[1], { strong: true, keep: true }], ['Salary Month', (value => /^\d{4}-\d{2}$/.test(value) ? new Date(`${value}-01T00:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' }) : value)(String(text('salary_month', 'month') || row?.[2] || ''))]])}${pdf.kv([['Voucher No.', `:${text('voucher_no', 'voucher') || number}`], ['Paid On', pdf.formatDate(get('paid_on', 'payment_date') || row?.[4])], ['Payment Method', text('payment_method', 'method')]], 'right')}</div>`
-      + '<div style="height:6mm"></div>' + pdf.itemsTable(lines, [['Net Pay', net, 'total']], { qty: '', price: '', total: 'Amount' })
-      + longText('Notes', text('notes'))
-      + '<div class="spacer"></div>' + pdf.signatures('Prepared by', 'Received by');
-  } else if (module === 'my-expense-claims' || module === 'cash-claims') {
-    title = 'EXPENSE VOUCHER';
-    const total = num(get('amount') || row?.[4]);
-    const jobNo = text('job_number', 'job_order') || (row?.[2] && row[2] !== '—' ? row[2] : '');
-    body = `<h1 class="doc-title">${title}</h1><div class="header">${pdf.kv([['Paid To', text('employee_name', 'staff_name', 'supplier_name', 'employee'), { strong: true, keep: true }], ['Category', text('category') || row?.[1]], ['Job Order No.', jobNo]])}${pdf.kv([['Voucher No.', `:${number}`], ['Date', pdf.formatDate(get('date') || row?.[3])], ['Status', text('status') || row?.[5]]], 'right')}</div>`
-      + '<div style="height:6mm"></div>' + pdf.itemsTable([{ description: text('description', 'purpose') || text('category') || 'Expense', qty: 1, unit: '', unit_price: total, amount: total }], [['Total Amount', total, 'total']])
-      + `<div style="margin-top:6mm">${pdf.kv([['Payment Source', text('payment_source', 'payment_method', 'method')], ['Supplier', text('supplier_name', 'supplier')]])}</div>`
-      + '<div class="spacer"></div>' + pdf.signatures('Prepared by', 'Approved by');
-  } else {
-    body = `<h1 class="doc-title">${title}</h1>${pdf.kv(columns.map((column, index) => [column, printableValue(row?.[index])]))}`;
-  }
-  try { pdf.openDocument({ title: `${number} - ${title}`, body }); } catch (error) { window.alert(error.message); }
-}
-
-function printReport(title, columns, rows, filters) {
-  try {
-    pdf.openTableReport({ title, columns: columns.map(humanizeKey), rows: rows.map(row => row.map(value => printableValue(value))), details: Object.entries(filters || {}).map(([key, value]) => [humanizeKey(key), String(value)]) });
-  } catch (error) { window.alert(error.message); }
-}
-
-function Status({ value }) { const val = value.toLowerCase().replaceAll(' ', '-'); const tone = /completed|approved|paid|active|in-stock|received/.test(val) ? 'green' : /overdue|rejected|low-stock/.test(val) ? 'red' : /scheduled|sent|submitted|open|partially-paid/.test(val) ? 'blue' : /waiting|pending|draft|unpaid/.test(val) ? 'amber' : 'gray'; return <span className={`status-badge ${tone}`}><i />{value}</span>; }
-function Attention({ icon: Icon, color, title, detail, to }) { return <Link to={to} className="attention-row"><span className={`attention-icon ${color}`}><Icon size={16} /></span><span className="attention-copy"><b>{title}</b><small>{detail}</small></span><ChevronRight size={15} className="attention-chevron" /></Link>; }
-
-import { ReceiptText as ReceiptTextIcon, PackageCheck as PackageCheckIcon, Boxes as BoxesIcon, BriefcaseBusiness as BriefcaseIcon, UsersRound as UsersIcon, Wallet as WalletIcon, ClipboardCheck as ClipboardIcon } from 'lucide-react';
-
-export default App;

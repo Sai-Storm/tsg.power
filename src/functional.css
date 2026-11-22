@@ -902,3 +902,50 @@ html[data-theme="dark"] .profile-meta{color:#8ea5b9}
 [data-theme="dark"] .payment-summary span{background:rgba(226,241,252,.08);color:#9fb4c8}
 [data-theme="dark"] .payment-summary b{color:#f0f6fc}
 [data-theme="dark"] .payment-summary span:last-child b{color:#f2c26b}
+
+/* In-app confirm / prompt / alert ------------------------------------------- */
+.ask-backdrop{z-index:80}
+.modal.ask-modal{width:min(460px,calc(100vw - 24px))}
+.ask-modal .modal-header{align-items:center}
+.ask-modal .modal-header h2{margin:0;font-size:19px}
+.ask-body p{margin:0 0 6px;font-size:15px;line-height:1.5}
+.ask-gap{display:block;height:8px}
+.ask-input{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-weight:700;font-size:14px}
+.ask-input input,.ask-input textarea{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid #cfd9e4;border-radius:9px;font:500 15px 'DM Sans',sans-serif;background:#fff;color:#0f1b2a}
+.ask-input small{font-weight:500;color:#5b6b7d}
+html[data-theme="dark"] .ask-input input,html[data-theme="dark"] .ask-input textarea{background:#0b1a29;color:#f2f7fb;border-color:#33506b}
+html[data-theme="dark"] .ask-input small{color:#bccddd}
+
+/* Page loading (pages are loaded on demand) --------------------------------- */
+.page-loading{display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;min-height:40vh;font-weight:600;opacity:.8}
+.page-loading .loading-bar{width:180px}
+
+/* File picker with camera ---------------------------------------------------- */
+.file-field{display:flex;flex-direction:column;gap:8px}
+.file-field-label{font-weight:600}
+.file-field-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.file-pick{position:relative;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.file-pick input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.file-field-list{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none}
+.file-field-list li{display:flex;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:8px;background:rgba(120,150,190,.12);font-size:14px}
+.file-field-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-field-list button{border:0;background:none;color:#c0392b;font-weight:700;cursor:pointer}
+
+/* Phones: module tables become one card per record --------------------------- */
+@media (max-width:720px){
+  .module-table thead{display:none}
+  .module-table,.module-table tbody,.module-table tr,.module-table td{display:block;width:100%}
+  .module-table tr{margin:0 0 10px;padding:8px 4px;border:1px solid rgba(120,150,190,.35);border-radius:12px}
+  .module-table td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 10px;border:0;text-align:right;font-size:15px;min-height:0}
+  .module-table td[data-label]::before{content:attr(data-label);flex:none;max-width:45%;text-align:left;font-size:13px;font-weight:700;opacity:.7;text-transform:uppercase;letter-spacing:.03em}
+  .module-table td:first-child{font-size:16.5px}
+  .module-table td.actions-cell{justify-content:flex-end;padding-top:10px}
+  .module-table td.actions-cell .row-actions{width:100%;justify-content:flex-end;gap:8px}
+  .module-table td.actions-cell .row-view-button,.module-table td.actions-cell .row-more-button{min-height:42px;min-width:64px}
+  .module-table td.empty-state{justify-content:center;text-align:center}
+  .module-table td.empty-state::before{content:none}
+  .table-scroll{overflow-x:visible}
+  .list-toolbar{flex-direction:column;align-items:stretch}
+  .list-actions{flex-wrap:wrap}
+  .module-heading{flex-wrap:wrap}
+}

@@ -1,7 +1,6 @@
 import { supabase, requireSupabase } from './supabase.js';
 import { signInWithPassword } from './auth.js';
-import { openTableReport } from '../pdfTemplate.js';
-import { downloadXlsx, guessColumnType } from '../excel.js';
+// PDF and Excel builders are loaded only when an export is requested.
 
 const READ_VIEW = {
   customers: 'v_customers',
@@ -248,6 +247,10 @@ function preparePayload(resource, payload) {
   const prepared = filterColumns(resource, payload);
   if (resource === 'machines' && !prepared.name) {
     prepared.name = [prepared.brand, prepared.model].filter(Boolean).join(' ') || prepared.machine_type || 'Machine';
+  }
+  if (resource === 'expenses' && Array.isArray(prepared.receipt_file)) {
+    prepared.receipt_files = prepared.receipt_file.filter(Boolean);
+    prepared.receipt_file = prepared.receipt_files[0] || null;
   }
   if (resource === 'jobs') {
     const assigned = Boolean(prepared.assigned_to || prepared.team_leader || (Array.isArray(prepared.assigned_employees) && prepared.assigned_employees.length));
@@ -566,7 +569,7 @@ async function workflowRoute(resource, id, action, payload) {
 }
 
 export async function apiRequest(path, options = {}) {
-  const client = requireSupabase();
+  requireSupabase(); // throws a clear error when Supabase is not configured
   const { pathname, params } = parsePath(path);
   const parts = pathname.split('/').filter(Boolean);
   if (!parts.length) throw new Error('Invalid API path.');
@@ -583,6 +586,8 @@ export async function apiRequest(path, options = {}) {
     if (resource === 'schedule') return rpc('team_schedule', { p_from: params.get('from'), p_to: params.get('to') });
     if (resource === 'cash-board') return rpc('cash_board', { p_from: params.get('from'), p_to: params.get('to') });
     if (resource === 'advances' && id && action === 'expenses') return rpc('advance_expenses', { p_advance: id });
+    if (resource === 'job-profitability') return rpc('job_profitability', { p_from: params.get('from') || null, p_to: params.get('to') || null });
+    if (resource === 'advance-overview') return rpc('advance_overview');
     if (id) return getResource(resource, id);
     return listResource(resource, params);
   }
@@ -597,6 +602,9 @@ export async function apiRequest(path, options = {}) {
     if (method === 'POST') return createAccount(payload);
     if (method === 'PUT') return updateUser(id, payload);
   }
+
+  // Daily advance reminders (safe to repeat: at most one reminder per advance per day).
+  if (method === 'POST' && resource === 'advances' && id === 'reminders' && !action) return rpc('send_advance_reminders');
 
   if (method === 'POST' && action) {
     const result = await workflowRoute(resource, id, action, payload);
@@ -678,7 +686,8 @@ function printableValue(value) {
   return String(value);
 }
 
-function printRows(rows, title, resource) {
+async function printRows(rows, title, resource) {
+  const { openTableReport } = await import('../pdfTemplate.js');
   const keys = printKeys(rows, resource);
   openTableReport({
     title: String(title || 'report'),
@@ -695,10 +704,11 @@ export async function exportModule(module, format, filters = {}) {
   const result = await listResource(resource, params);
   const rows = result.items || [];
   if (format === 'pdf') {
-    printRows(rows, reportId ? reportId.replaceAll('-', ' ') : resource.replaceAll('-', ' '), resource);
+    await printRows(rows, reportId ? reportId.replaceAll('-', ' ') : resource.replaceAll('-', ' '), resource);
     return;
   }
   if (format === 'xlsx') {
+    const { downloadXlsx, guessColumnType } = await import('../excel.js');
     const keys = printKeys(rows, resource);
     const headers = keys.map(humanizeKey);
     const values = rows.map(row => keys.map(key => printableValue(row[key])));

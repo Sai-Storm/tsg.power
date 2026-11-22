@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Check, CornerUpLeft, Paperclip, Pencil, Save, Send, Trash2, X } from 'lucide-react';
+import { Briefcase, Camera, Check, CornerUpLeft, Paperclip, Pencil, Save, Send, Trash2, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { ReceiptLink, looksLikeFile } from './Attachments.jsx';
 import AdvanceTrend from './AdvanceTrend.jsx';
+import { confirmDialog, promptDialog } from './components/AskDialog.jsx';
 import './advance.css';
 
 // One window for the whole life of a staff advance, always tied to its job order:
@@ -21,45 +22,20 @@ const isDraft = entry => lower(entry.status) === 'draft';
 const todayKey = () => new Date().toISOString().slice(0, 10);
 const shortDate = value => { if (!value) return '—'; const d = new Date(`${String(value).slice(0, 10)}T00:00:00`); return Number.isNaN(d.valueOf()) ? String(value) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const statusClass = status => `advx-status advx-status-${lower(status || 'draft').replace(/[^a-z]+/g, '-')}`;
-const emptyForm = () => ({ id: '', date: todayKey(), category: CATEGORIES[0], supplier_name: '', description: '', amount: '', notes: '', receipt: null, receipt_file: '' });
+const emptyForm = () => ({ id: '', date: todayKey(), category: CATEGORIES[0], supplier_name: '', description: '', amount: '', notes: '', newFiles: [], existingFiles: [], removeFiles: [] });
 const isOpen = status => ['issued', 'open', 'partially settled'].includes(lower(status));
 const stageOf = status => ({ 'pending approval': 0, approved: 1, issued: 3, open: 3, 'partially settled': 3, 'under review': 4, 'settlement approved': 5, settled: 6, closed: 6 })[lower(status)] ?? 0;
 const stageLabel = status => (isOpen(status) ? 'In progress' : status || '—');
+const receiptsOf = entry => (Array.isArray(entry.receipt_files) && entry.receipt_files.length ? entry.receipt_files : entry.receipt_file ? [entry.receipt_file] : []);
 
-// ---- Demo mode (no Supabase): the same workflow in localStorage -------------
-const DEMO_KEY = 'tsg-demo-advance-expenses';
-const demoAll = () => JSON.parse(localStorage.getItem(DEMO_KEY) || '{}');
-function demoGet(row, columns) {
-  const col = name => row[columns.findIndex(column => column.toLowerCase() === name)];
-  const raw = demoAll()[row[0]];
-  const listed = col('status');
-  const base = { entries: [], history: [], status: listed && listed !== '—' ? listed : 'Issued', returned: 0, reimbursed: 0, review_note: '' };
-  return Array.isArray(raw) ? { ...base, entries: raw } : { ...base, ...(raw || {}) };
-}
-function demoPut(row, state) { const all = demoAll(); all[row[0]] = state; localStorage.setItem(DEMO_KEY, JSON.stringify(all)); }
-function demoData(row, columns) {
-  const col = name => row[columns.findIndex(column => column.toLowerCase() === name)];
-  const state = demoGet(row, columns);
-  const amount = num(col('amount'));
-  const sum = test => state.entries.filter(e => test(lower(e.status))).reduce((s, e) => s + num(e.amount), 0);
-  const drafts = sum(s => s === 'draft'); const submitted = sum(s => s === 'submitted'); const approved = sum(s => s === 'approved'); const rejected = sum(s => s === 'rejected');
-  const recorded = drafts + submitted + approved;
-  return {
-    advance: { number: row[0], purpose: col('purpose'), status: state.status, job_number: col('job order'), staff_name: col('staff member'), amount, drafts, submitted, approved, rejected, claimed: submitted + approved, recorded, remaining: Math.max(amount - recorded, 0), over: Math.max(recorded - amount, 0), net: amount - approved, returned_amount: state.returned, reimbursed_amount: state.reimbursed, review_note: state.review_note, can_record: isOpen(state.status), can_review: lower(state.status) === 'under review', can_reconcile: lower(state.status) === 'settlement approved' },
-    entries: state.entries,
-    history: state.history,
-  };
-}
-
-export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, isAdmin, notify, onClose, onChanged }) {
+export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, onClose, onChanged }) {
   const advanceId = row?._id || row?.[0];
-  const [demoTick, setDemoTick] = useState(0);
   const query = useQuery({
     queryKey: ['advance-expenses', advanceId],
     queryFn: () => apiRequest(`/advances/${encodeURIComponent(advanceId)}/expenses`),
-    enabled: !isDemo && Boolean(advanceId),
+    enabled: Boolean(advanceId),
   });
-  const data = useMemo(() => (isDemo ? demoData(row, columns) : query.data), [isDemo, row, columns, query.data, demoTick]);
+  const data = query.data;
   const advance = data?.advance;
   const entries = data?.entries || [];
   const history = data?.history || [];
@@ -82,7 +58,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
   const canReview = Boolean(isAdmin && advance?.can_review);
   const canReconcile = Boolean(isAdmin && advance?.can_reconcile);
   const jobNumber = advance?.job_number && advance.job_number !== '—' ? advance.job_number : '';
-  const missingReceipts = drafts.filter(d => !d.receipt_file).length;
+  const missingReceipts = drafts.filter(d => !receiptsOf(d).length).length;
   const editingAmount = form?.id ? num(drafts.find(d => String(d.id) === form.id)?.amount) : 0;
   const formTotalAfter = recorded - editingAmount + num(form?.amount);
   const scale = Math.max(amount, recorded);
@@ -99,17 +75,12 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
   const settlementExpenses = usesApproved ? approved : recorded;
   const settlement = outcome(settlementExpenses);
 
-  const refresh = async () => { if (isDemo) setDemoTick(t => t + 1); else await query.refetch(); onChanged?.(); };
+  const refresh = async () => { await query.refetch(); onChanged?.(); };
   const run = async (task, success) => {
     setBusy(true); setError('');
     try { await task(); await refresh(); if (success) notify?.(success); return true; }
     catch (e) { setError(e.message || 'Something went wrong.'); return false; }
     finally { setBusy(false); }
-  };
-  const demoUpdate = (change, action, note, value) => {
-    const state = demoGet(row, columns); change(state);
-    state.history = [{ action, note, amount: value, at: new Date().toISOString(), by: isAdmin ? 'Admin' : 'Staff' }, ...(state.history || [])];
-    demoPut(row, state);
   };
 
   // ---- Staff -----------------------------------------------------------------
@@ -118,81 +89,64 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
     if (value <= 0) { setError('Enter the amount spent.'); return; }
     if (!form.description.trim()) { setError('Describe what the money was spent on.'); return; }
     const ok = await run(async () => {
-      if (isDemo) {
-        demoUpdate(state => {
-          const record = { id: form.id || `D-${Date.now()}`, number: form.id ? state.entries.find(e => e.id === form.id)?.number : `EXP-DEMO-${state.entries.length + 1}`, date: form.date, category: form.category, supplier_name: form.supplier_name, description: form.description.trim(), notes: form.notes.trim(), amount: value, status: 'Draft', receipt_file: form.receipt ? form.receipt.name : form.receipt_file, job_number: jobNumber };
-          state.entries = form.id ? state.entries.map(e => (e.id === form.id ? record : e)) : [...state.entries, record];
-        }, form.id ? 'Draft edited' : 'Draft saved', form.description.trim(), value);
-        return;
-      }
       const body = new FormData();
       if (form.id) body.append('id', form.id);
       body.append('date', form.date); body.append('category', form.category); body.append('supplier_name', form.supplier_name.trim());
       body.append('description', form.description.trim()); body.append('amount', String(value)); body.append('notes', form.notes.trim());
-      if (form.receipt) body.append('receipt_file', form.receipt);
+      form.newFiles.forEach(file => body.append('receipt_files', file));
+      if (form.removeFiles.length) body.append('remove_receipts', JSON.stringify(form.removeFiles));
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/draft`, { method: 'POST', body });
     }, form.id ? 'Draft updated. Nothing has been sent to the manager.' : 'Saved as draft. Nothing has been sent to the manager.');
     if (ok) setForm({ ...emptyForm(), date: form.date, category: form.category });
   };
 
-  const deleteDraft = entry => {
-    if (!window.confirm(`Delete the draft "${entry.description}" (${money(entry.amount)})?`)) return;
+  const deleteDraft = async entry => {
+    if (!await confirmDialog(`Delete the draft "${entry.description}" (${money(entry.amount)})?`, { title: 'Delete draft', confirmLabel: 'Delete', tone: 'danger' })) return;
     run(async () => {
-      if (isDemo) { demoUpdate(state => { state.entries = state.entries.filter(e => e.id !== entry.id); }, 'Draft deleted', entry.description, num(entry.amount)); return; }
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/delete-draft`, { method: 'POST', body: JSON.stringify({ expense_id: entry.id }) });
     }, 'Draft deleted.');
   };
 
-  const submitSettlement = () => {
+  const submitSettlement = async () => {
     if (!drafts.length) return;
     if (missingReceipts) { setError(`${missingReceipts} expense${missingReceipts === 1 ? ' has' : 's have'} no receipt. Edit ${missingReceipts === 1 ? 'it' : 'them'} and upload the receipt before submitting.`); return; }
     const o = outcome(recorded);
     const tail = o.kind === 'return' ? `\n${money(o.value)} will need to be returned to the company.` : o.kind === 'reimburse' ? `\nYou spent ${money(o.value)} more than the advance. The company will reimburse it after approval.` : '\nThis uses the full advance.';
-    if (!window.confirm(`Submit the settlement for ${advance?.number || row?.[0]}${jobNumber ? ` (job ${jobNumber})` : ''}?\n\n${drafts.length} expense${drafts.length === 1 ? '' : 's'} · ${money(draftTotal)}\nAdvance received: ${money(amount)}\nTotal expenses: ${money(recorded)}${tail}\n\nAfter submitting you cannot edit these expenses unless the manager returns them.`)) return;
+    if (!await confirmDialog(`Submit the settlement for ${advance?.number || row?.[0]}${jobNumber ? ` (job ${jobNumber})` : ''}?\n\n${drafts.length} expense${drafts.length === 1 ? '' : 's'} · ${money(draftTotal)}\nAdvance received: ${money(amount)}\nTotal expenses: ${money(recorded)}${tail}\n\nAfter submitting you cannot edit these expenses unless the manager returns them.`, { title: 'Submit settlement', confirmLabel: 'Submit to manager' })) return;
     run(async () => {
-      if (isDemo) { demoUpdate(state => { state.entries = state.entries.map(e => (isDraft(e) ? { ...e, status: 'Submitted' } : e)); state.status = 'Under Review'; state.review_note = ''; }, 'Settlement submitted', '', draftTotal); return; }
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/submit-settlement`, { method: 'POST', body: JSON.stringify({}) });
     }, 'Settlement submitted to the manager.');
   };
 
   // ---- Manager ---------------------------------------------------------------
-  const reviewExpense = (entry, decision) => {
+  const reviewExpense = async (entry, decision) => {
     let reason = '';
-    if (decision === 'Rejected') { reason = window.prompt(`Reason for rejecting "${entry.description}" (${money(entry.amount)}):`, entry.rejection_reason || '') || ''; if (!reason.trim()) return; }
+    if (decision === 'Rejected') { reason = await promptDialog(`Rejecting "${entry.description}" (${money(entry.amount)}). The staff member will see this reason.`, { title: 'Reject expense', label: 'Reason', required: true, multiline: true, defaultValue: entry.rejection_reason || '', confirmLabel: 'Reject expense' }) || ''; if (!reason.trim()) return; }
     run(async () => {
-      if (isDemo) { demoUpdate(state => { state.entries = state.entries.map(e => (e.id === entry.id ? { ...e, status: decision, rejection_reason: decision === 'Rejected' ? reason.trim() : '' } : e)); }, `Expense ${decision.toLowerCase()}: ${entry.description}`, reason, num(entry.amount)); return; }
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/review-expense`, { method: 'POST', body: JSON.stringify({ expense_id: entry.id, decision, reason }) });
     }, `Expense ${decision.toLowerCase()}.`);
   };
 
-  const decide = decision => {
+  const decide = async decision => {
     let note = '';
-    if (decision === 'return') { note = window.prompt('What should the staff member change? (This is sent to them.)') || ''; if (!note.trim()) return; }
-    else if (!window.confirm(`Approve the settlement for ${advance?.number}?\n\nEvery expense that is not rejected will be approved.`)) return;
+    if (decision === 'return') { note = await promptDialog('Tell the staff member what to change. They will be notified.', { title: 'Return to staff', label: 'What should change?', required: true, multiline: true, confirmLabel: 'Return settlement' }) || ''; if (!note.trim()) return; }
+    else if (!await confirmDialog(`Approve the settlement for ${advance?.number}?\n\nEvery expense that is not rejected will be approved.`, { title: 'Approve settlement', confirmLabel: 'Approve settlement' })) return;
     run(async () => {
-      if (isDemo) {
-        demoUpdate(state => {
-          if (decision === 'approve') { state.entries = state.entries.map(e => (lower(e.status) === 'submitted' ? { ...e, status: 'Approved' } : e)); state.status = 'Settlement Approved'; }
-          else { state.entries = state.entries.map(e => (lower(e.status) === 'submitted' ? { ...e, status: 'Draft' } : e)); state.status = 'Issued'; state.review_note = note.trim(); }
-        }, decision === 'approve' ? 'Settlement approved' : 'Settlement returned to staff', note);
-        return;
-      }
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/decide`, { method: 'POST', body: JSON.stringify({ decision, note }) });
     }, decision === 'approve' ? 'Settlement approved. Finance can now reconcile it.' : 'Settlement returned to the staff member.');
   };
 
   // ---- Finance ---------------------------------------------------------------
-  const reconcile = () => {
+  const reconcile = async () => {
     const o = outcome(approved);
     const action = o.kind === 'return' ? `Record ${money(o.value)} returned by staff and close` : o.kind === 'reimburse' ? `Pay ${money(o.value)} to staff and close` : 'Close the fully settled advance';
-    if (!window.confirm(`${action}?\n\nThis posts to the cash book against job ${jobNumber || '—'} and closes the advance.`)) return;
+    if (!await confirmDialog(`${action}?\n\nThis posts to the cash book against job ${jobNumber || '—'} and closes the advance.`, { title: 'Close advance', confirmLabel: 'Record and close' })) return;
     run(async () => {
-      if (isDemo) { demoUpdate(state => { state.status = 'Settled'; state.returned = o.kind === 'return' ? o.value : 0; state.reimbursed = o.kind === 'reimburse' ? o.value : 0; }, o.kind === 'return' ? 'Returned cash recorded' : o.kind === 'reimburse' ? 'Reimbursement paid' : 'Advance closed', `${finance.method}${finance.reference ? ` · ${finance.reference}` : ''}`, o.value); return; }
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/reconcile`, { method: 'POST', body: JSON.stringify(finance) });
     }, 'Advance closed.');
   };
 
-  const openEdit = entry => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || CATEGORIES[0], supplier_name: entry.supplier_name || '', description: entry.description || '', notes: entry.notes || '', amount: String(num(entry.amount)), receipt_file: entry.receipt_file || '' }); };
+  const openEdit = entry => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || CATEGORIES[0], supplier_name: entry.supplier_name || '', description: entry.description || '', notes: entry.notes || '', amount: String(num(entry.amount)), existingFiles: receiptsOf(entry) }); };
   const showActions = canRecord || canReview;
   const formDirty = Boolean(form.id || form.description.trim() || String(form.amount).trim());
   const next = nextStep(stage, { isAdmin, readOnly, hasDrafts: drafts.length > 0, reviewNote: advance?.review_note });
@@ -213,8 +167,8 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
       </header>
 
       <div className="advx-body">
-        {!isDemo && query.isLoading && <p className="advx-muted">Loading…</p>}
-        {!isDemo && query.isError && <p className="advx-error">{query.error?.message}</p>}
+        {query.isLoading && <p className="advx-muted">Loading…</p>}
+        {query.isError && <p className="advx-error">{query.error?.message}</p>}
         {advance && <>
           <section className={`advx-next advx-next-${next.tone}`}>
             <div className="advx-next-top"><span>Step {Math.min(stage + 1, STEPS.length)} of {STEPS.length}</span><b>{STEPS[stage]}</b></div>
@@ -247,7 +201,11 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
                   <div className="advx-item-meta">{[shortDate(entry.date), entry.category, entry.supplier_name, entry.number].filter(Boolean).join(' · ')}</div>
                   {entry.notes && <div className="advx-item-note">{entry.notes}</div>}
                   {entry.rejection_reason && <div className="advx-item-reason">Rejected: {entry.rejection_reason}</div>}
-                  <div className="advx-item-receipt">{entry.receipt_file ? (looksLikeFile(entry.receipt_file) ? <ReceiptLink url={entry.receipt_file} name={`Receipt · ${entry.description || entry.number || ''}`} /> : <span className="advx-receipt"><Paperclip size={14} />Receipt attached</span>) : <span className="advx-missing">No receipt yet</span>}</div>
+                  <div className="advx-item-receipt">{receiptsOf(entry).length
+                    ? receiptsOf(entry).map((file, index) => (looksLikeFile(file)
+                      ? <ReceiptLink key={file} url={file} name={`Receipt ${index + 1} · ${entry.description || entry.number || ''}`} />
+                      : <span key={file} className="advx-receipt"><Paperclip size={14} />Receipt {index + 1}</span>))
+                    : <span className="advx-missing">No receipt yet</span>}</div>
                 </div>
                 <div className="advx-item-side">
                   <b className="advx-item-amount">{money(entry.amount)}</b>
@@ -269,7 +227,19 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
               <label>Amount (MMK)<input type="number" min="0" step="any" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="e.g. 300000" /></label>
               <label className="wide">Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="e.g. Generator spare parts" /></label>
               <label>Supplier<input value={form.supplier_name} onChange={e => setForm({ ...form, supplier_name: e.target.value })} placeholder="e.g. ABC Supplier" /></label>
-              <label className="wide">Receipt (photo or PDF)<input key={fileInputKey} type="file" accept="image/*,.pdf" onChange={e => setForm({ ...form, receipt: e.target.files?.[0] || null })} /><small>{form.receipt ? form.receipt.name : form.receipt_file ? 'Receipt already attached. Choose a file only to replace it.' : 'Can be added later, but needed before you submit.'}</small></label>
+              <div className="wide advx-receipts-field">
+                <span className="advx-field-label">Receipts (photos or PDF)</span>
+                <div className="advx-receipt-buttons">
+                  <label className="advx-btn small"><Paperclip size={14} />Choose files<input key={`pick-${fileInputKey}`} type="file" multiple accept="image/*,.pdf" onChange={e => { const picked = Array.from(e.target.files || []); setForm(old => ({ ...old, newFiles: [...old.newFiles, ...picked] })); }} /></label>
+                  <label className="advx-btn small"><Camera size={14} />Take photo<input key={`cam-${fileInputKey}`} type="file" accept="image/*" capture="environment" onChange={e => { const picked = Array.from(e.target.files || []); setForm(old => ({ ...old, newFiles: [...old.newFiles, ...picked] })); }} /></label>
+                </div>
+                {(form.existingFiles.length - form.removeFiles.length + form.newFiles.length) > 0
+                  ? <ul className="advx-receipt-list">
+                    {form.existingFiles.filter(file => !form.removeFiles.includes(file)).map((file, index) => <li key={file}><span>Saved receipt {index + 1}</span><button type="button" onClick={() => setForm(old => ({ ...old, removeFiles: [...old.removeFiles, file] }))}>Remove</button></li>)}
+                    {form.newFiles.map((file, index) => <li key={`${file.name}-${index}`}><span>{file.name}</span><button type="button" onClick={() => setForm(old => ({ ...old, newFiles: old.newFiles.filter((_, i) => i !== index) }))}>Remove</button></li>)}
+                  </ul>
+                  : <small>Add one or more receipts. You can add them later, but they are needed before you submit.</small>}
+              </div>
               <label>Notes<input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder={jobNumber ? `For job ${jobNumber}` : 'Optional'} /></label>
             </div>
             <p className="advx-form-link">Linked to advance <b>{advance.number || row?.[0]}</b> and job order <b>{jobNumber || '—'}</b>.</p>
