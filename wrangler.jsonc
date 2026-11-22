@@ -6,7 +6,7 @@
 // BUILD time, from .env locally or from the build variables in Cloudflare.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tsg-power",
+  "name": "erp",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./dist",

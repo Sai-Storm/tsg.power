@@ -83,7 +83,7 @@ npm run deploy          # builds with your .env and uploads
 npm run cf:preview      # serves the build locally the way Cloudflare will (http://localhost:8787)
 ```
 
-**After the first deploy**, add the new address (e.g. `https://tsg-power.<account>.workers.dev`
+**After the first deploy**, add the new address (e.g. `https://erp.tsgpower.workers.dev`
 or your own domain) in Supabase → Authentication → URL Configuration: set it as the
 **Site URL** and add `https://<that-address>/**` to **Redirect URLs**, or Google sign-in
 will send people back to the old site.
