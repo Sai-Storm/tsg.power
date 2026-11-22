@@ -126,6 +126,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
             ? <><b>The whole advance is accounted for in drafts.</b> Nothing has been sent yet. Press <b>Submit to admin</b> when you are done.</>
             : <><b>{money(draftTotal)} saved as draft and not submitted.</b> You can keep uploading details and press <b>Submit to admin</b> when you are done.</>}</div>}
 
+          <h3 className="advx-section-title">Uploaded details</h3>
           <div className="advx-table-wrap"><table className="advx-table">
             <thead><tr><th>Date</th><th>Expense entry</th><th>Receipt</th><th className="num">Amount</th><th>Status</th>{!readOnly && <th />}</tr></thead>
             <tbody>
