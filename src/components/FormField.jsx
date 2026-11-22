@@ -62,8 +62,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
     return (
       <div className="line-items-field">
         <div className="line-items-title">
-          {field.label}
-          {required && <b>*</b>}
+          <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
         </div>
         {(Array.isArray(value) ? value : []).map((item, index) => (
           <div className="line-item-row priced-line" key={index}>
@@ -131,8 +130,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
     return (
       <div className="line-items-field">
         <div className="line-items-title">
-          {field.label}
-          {required && <b>*</b>}
+          <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
         </div>
         {(Array.isArray(value) ? value : []).map((item, index) => (
           <div className="line-item-row request-line" key={index}>
@@ -196,8 +194,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
   if (field.type === 'lookup-multiple')
     return (
       <label className="form-field">
-        {field.label}
-        {required && <b>*</b>}
+        <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
         <select
           multiple
           required={required}
@@ -269,8 +266,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
   if (field.type === 'textarea')
     return (
       <label className="form-field wide-field">
-        {field.label}
-        {required && <b>*</b>}
+        <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
         <textarea
           required={required}
           rows={3}
@@ -286,8 +282,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
     return (
       <div className="form-field file-field">
         <span className="file-field-label">
-          {field.label}
-          {required && <b>*</b>}
+          <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
         </span>
         <div className="file-field-buttons">
           <label className="secondary-button file-pick">
@@ -338,8 +333,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
   if (field.type === 'select' || field.type === 'lookup')
     return (
       <label className="form-field">
-        {field.label}
-        {required && <b>*</b>}
+        <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
         <select required={required} value={value || ''} onChange={e => onChange(e.target.value)}>
           <option value="">Choose {field.label.toLowerCase()}</option>
           {(field.options || options).map(option => {
@@ -355,8 +349,7 @@ export default function FormField({ field, value, onChange, options = [] }) {
     );
   return (
     <label className="form-field">
-      {field.label}
-      {required && <b>*</b>}
+      <span className="field-label">{field.label}{required && <b aria-hidden="true">*</b>}</span>
       <input
         type={field.type || 'text'}
         required={required}

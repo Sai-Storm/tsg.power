@@ -945,6 +945,12 @@ html[data-theme="dark"] .ask-input small{color:#bccddd}
 @media (max-width:720px){
   .module-table thead{display:none}
   .module-table,.module-table tbody,.module-table tr,.module-table td{display:block;width:100%}
+  /* Undo the older scrolling-table layout: no fixed width, no sticky first cell. */
+  .module-table{min-width:0!important;table-layout:auto}
+  .table-scroll{overflow-x:visible!important}
+  .module-table th:first-child,.module-table td:first-child{position:static!important;background:transparent!important;box-shadow:none!important}
+  .module-table td>*{min-width:0;max-width:60%;overflow-wrap:anywhere}
+  .module-table td{word-break:normal;overflow-wrap:anywhere;white-space:normal}
   .module-table tr{margin:0 0 10px;padding:8px 4px;border:1px solid rgba(120,150,190,.35);border-radius:12px}
   .module-table td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 10px;border:0;text-align:right;font-size:15px;min-height:0}
   .module-table td[data-label]::before{content:attr(data-label);flex:none;max-width:45%;text-align:left;font-size:13px;font-weight:700;opacity:.7;text-transform:uppercase;letter-spacing:.03em}
@@ -1058,3 +1064,14 @@ html[data-theme="light"] .signin-success-tick{background:#e3f6ee;box-shadow:0 0 
 @keyframes signin-card{0%{opacity:0;transform:scale(.86)}14%{opacity:1;transform:scale(1)}80%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.96)}}
 @keyframes signin-layer{0%{opacity:0}10%{opacity:1}80%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.signin-success-layer,.signin-success-card{animation:signin-layer 1.8s steps(1,end) forwards}.signin-success-ring,.signin-success-check{animation:none;stroke-dashoffset:0}}
+
+/* Form labels: the required star stays on the same line as the label text. */
+.field-label{display:inline-flex;align-items:baseline;gap:4px;flex-wrap:wrap}
+.field-label>b{color:#e5534b;font-weight:700}
+
+/* Phone menu: keep the close button clear of the logo. */
+@media (max-width:900px){
+  .sidebar .brand{padding-right:56px}
+  .sidebar .brand .brand-logo{max-width:100%;height:auto}
+  .sidebar .close-menu{top:14px;right:10px;transform:none;width:40px;height:40px}
+}
