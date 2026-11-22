@@ -536,7 +536,7 @@ function workflowActions(slug, row, columns, role) {
   if (slug === 'recycle-bin') return [{ label: 'Restore', action: 'restore' }, { label: 'Purge permanently', action: 'purge' }];
   if (slug === 'staff') return role === 'Admin' ? [{ label: 'Edit profile', action: 'edit-profile' }] : [];
   if (slug === 'notifications') { const unread = String(row[columns.findIndex(column => /status/i.test(column))] || '').toLowerCase() === 'unread'; return [...(unread ? [{ label: 'Mark read', action: 'mark-read', status: 'Read' }] : []), { label: 'Delete notification', action: 'delete-notification' }]; }
-  if (slug === 'my-advances') return role === 'Staff' ? [{ label: 'Expenses & receipts', action: 'advance-expenses' }] : [];
+  if (slug === 'my-advances') return role === 'Staff' ? [{ label: 'Advance details', action: 'advance-expenses' }] : [];
   if (slug === 'advances') {
     const advanceStatus = String(row[columns.findIndex(column => /status/i.test(column))] || '').toLowerCase();
     if (role !== 'Admin') return [];

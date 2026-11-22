@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Paperclip, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
+import { Paperclip, Pencil, Send, Trash2, Upload, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { ReceiptLink, looksLikeFile } from './Attachments.jsx';
 import './advance.css';
 
-// Staff record what they spend from an advance as drafts (with receipts), keep
-// adding over days, and submit whenever they choose — one, several, or all.
+// One place for staff to account for an advance: upload the details of what
+// they spent (saved as drafts, with receipts) and submit them all to the admin
+// when they are done.
 
 const CATEGORIES = ['Materials', 'Job', 'Travel', 'Fuel', 'Meals', 'Accommodation', 'Office', 'Other'];
 const num = value => { const n = Number(String(value ?? '').replace(/[^0-9.-]/g, '')); return Number.isFinite(n) ? n : 0; };
@@ -44,19 +45,14 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
   const drafts = entries.filter(isDraft);
 
   const [form, setForm] = useState(null); // null = closed, otherwise the draft being added / edited
-  const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-
-  // Keep selection limited to drafts that still exist.
-  useEffect(() => { setSelected(old => new Set([...old].filter(id => drafts.some(d => String(d.id) === id)))); }, [entries.length]);
 
   const amount = num(advance?.amount); const claimed = num(advance?.claimed); const draftTotal = num(advance?.drafts); const remaining = num(advance?.remaining);
   const editingAmount = form?.id ? num(drafts.find(d => String(d.id) === form.id)?.amount) : 0;
   const room = remaining + editingAmount;
   const canRecord = !readOnly && advance?.can_record;
-  const selectedDrafts = drafts.filter(d => selected.has(String(d.id)));
-  const toSubmit = selectedDrafts.length ? selectedDrafts : drafts;
+  const toSubmit = drafts;
   const toSubmitTotal = toSubmit.reduce((s, d) => s + num(d.amount), 0);
   const missingReceipts = toSubmit.filter(d => !d.receipt_file).length;
   const pct = value => (amount ? `${Math.min(100, (value / amount) * 100)}%` : '0%');
@@ -73,7 +69,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
     const value = num(form.amount);
     if (value <= 0) { setError('Enter the amount spent.'); return; }
     if (!form.description.trim()) { setError('Describe what the money was spent on.'); return; }
-    if (value > room) { setError(`That is ${money(value - room)} more than this advance has left (${money(room)}). Record the extra as a normal expense claim.`); return; }
+    if (value > room) { setError(`That is ${money(value - room)} more than this advance has left (${money(room)}). Record the extra as a normal expense claim (paid by you).`); return; }
     const ok = await run(async () => {
       if (isDemo) {
         const store = demoStore(); const list = store[row[0]] || [];
@@ -87,7 +83,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
       body.append('description', form.description.trim()); body.append('amount', String(value));
       if (form.receipt) body.append('receipt_file', form.receipt);
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/draft`, { method: 'POST', body });
-    }, form.id ? 'Draft updated. It has not been submitted.' : 'Saved as draft. Submit whenever you are ready.');
+    }, form.id ? 'Detail updated. It has not been sent to the admin yet.' : 'Detail uploaded. Press "Submit to admin" when you are done.');
     if (ok) setForm(null);
   };
 
@@ -103,19 +99,17 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
     if (!toSubmit.length) return;
     if (missingReceipts) { setError(`${missingReceipts} draft${missingReceipts === 1 ? ' has' : 's have'} no receipt. Edit ${missingReceipts === 1 ? 'it' : 'them'} and attach the receipt before submitting.`); return; }
     const left = amount - claimed - toSubmitTotal;
-    if (!window.confirm(`Submit ${toSubmit.length} expense${toSubmit.length === 1 ? '' : 's'} totalling ${money(toSubmitTotal)} for approval?\n\nAfter submitting they can no longer be edited.${left > 0 ? `\n${money(left)} of the advance will still be open.` : '\nThis fully accounts for the advance.'}`)) return;
+    if (!window.confirm(`Submit ${toSubmit.length} expense${toSubmit.length === 1 ? '' : 's'} totalling ${money(toSubmitTotal)} to the admin?\n\nAfter submitting they can no longer be edited.${left > 0 ? `\n${money(left)} of the advance will still be open.` : '\nThis fully accounts for the advance.'}`)) return;
     run(async () => {
       if (isDemo) { const ids = new Set(toSubmit.map(d => d.id)); const store = demoStore(); store[row[0]] = (store[row[0]] || []).map(e => (ids.has(e.id) ? { ...e, status: 'Submitted' } : e)); demoSave(store); return; }
-      await apiRequest(`/advances/${encodeURIComponent(advanceId)}/submit-drafts`, { method: 'POST', body: JSON.stringify({ ids: selectedDrafts.length ? selectedDrafts.map(d => d.id) : null }) });
-    }, `${toSubmit.length} expense${toSubmit.length === 1 ? '' : 's'} submitted for approval.`).then(ok => ok && setSelected(new Set()));
+      await apiRequest(`/advances/${encodeURIComponent(advanceId)}/submit-drafts`, { method: 'POST', body: JSON.stringify({ ids: null }) });
+    }, `${toSubmit.length} expense${toSubmit.length === 1 ? '' : 's'} submitted to the admin.`);
   };
 
-  const toggle = id => setSelected(old => { const next = new Set(old); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  const allSelected = drafts.length > 0 && selectedDrafts.length === drafts.length;
 
   return <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && !busy && onClose()}>
     <section className="modal advx-modal" role="dialog" aria-label={`Expenses for advance ${row?.[0]}`}>
-      <div className="modal-header"><div><div className="eyebrow">ADVANCE · {advance?.number || row?.[0]}</div><h2>Expenses against this advance</h2>{advance?.purpose && <p className="advx-purpose">{advance.purpose}{advance.job_number ? ` · ${advance.job_number}` : ''}</p>}</div><button className="icon-button" onClick={onClose} aria-label="Close dialog" disabled={busy}><X size={18} /></button></div>
+      <div className="modal-header"><div><div className="eyebrow">ADVANCE · {advance?.number || row?.[0]}</div><h2>Advance details</h2>{advance?.purpose && <p className="advx-purpose">{advance.purpose}{advance.job_number ? ` · ${advance.job_number}` : ''}</p>}</div><button className="icon-button" onClick={onClose} aria-label="Close dialog" disabled={busy}><X size={18} /></button></div>
 
       <div className="advx-body">
         {!isDemo && query.isLoading && <p className="advx-muted">Loading…</p>}
@@ -129,14 +123,13 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
           </div>
           <div className="advx-bar" aria-hidden="true"><i className="submitted" style={{ width: pct(claimed) }} /><i className="drafts" style={{ width: pct(draftTotal) }} /></div>
           {draftTotal > 0 && <div className="advx-callout">{remaining <= 0
-            ? <><b>The whole advance is accounted for in drafts.</b> Nothing has been submitted yet. Submit when you are ready.</>
-            : <><b>{money(draftTotal)} saved as draft and not submitted.</b> You can keep adding expenses and submit at any time. You do not have to wait until the full advance is used.</>}</div>}
+            ? <><b>The whole advance is accounted for in drafts.</b> Nothing has been sent yet. Press <b>Submit to admin</b> when you are done.</>
+            : <><b>{money(draftTotal)} saved as draft and not submitted.</b> You can keep uploading details and press <b>Submit to admin</b> when you are done.</>}</div>}
 
           <div className="advx-table-wrap"><table className="advx-table">
-            <thead><tr>{!readOnly && <th className="advx-check">{drafts.length > 0 && <input type="checkbox" aria-label="Select all drafts" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(drafts.map(d => String(d.id))))} />}</th>}<th>Date</th><th>Expense entry</th><th>Receipt</th><th className="num">Amount</th><th>Status</th>{!readOnly && <th />}</tr></thead>
+            <thead><tr><th>Date</th><th>Expense entry</th><th>Receipt</th><th className="num">Amount</th><th>Status</th>{!readOnly && <th />}</tr></thead>
             <tbody>
               {entries.map(entry => { const draft = isDraft(entry); return <tr key={entry.id} className={draft ? 'is-draft' : ''}>
-                {!readOnly && <td className="advx-check">{draft && <input type="checkbox" aria-label={`Select ${entry.description}`} checked={selected.has(String(entry.id))} onChange={() => toggle(String(entry.id))} />}</td>}
                 <td className="advx-date">{shortDate(entry.date)}</td>
                 <td><b>{entry.description}</b><small>{[entry.category, entry.supplier_name, entry.number].filter(Boolean).join(' · ')}</small></td>
                 <td>{entry.receipt_file ? (looksLikeFile(entry.receipt_file) ? <ReceiptLink url={entry.receipt_file} name={`Receipt · ${entry.description || entry.number || ''}`} /> : <span className="advx-receipt"><Paperclip size={13} />Attached</span>) : <span className="advx-missing">Missing</span>}</td>
@@ -144,20 +137,20 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
                 <td><span className={statusClass(entry.status)}>{entry.status}</span></td>
                 {!readOnly && <td className="advx-row-actions">{draft && canRecord && <><button className="row-action-button" disabled={busy} onClick={() => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || 'Materials', supplier_name: entry.supplier_name || '', description: entry.description || '', amount: String(num(entry.amount)), receipt_file: entry.receipt_file || '' }); }} aria-label="Edit draft"><Pencil size={13} /></button><button className="row-action-button danger" disabled={busy} onClick={() => deleteDraft(entry)} aria-label="Delete draft"><Trash2 size={13} /></button></>}</td>}
               </tr>; })}
-              {!entries.length && <tr><td colSpan={readOnly ? 5 : 7} className="advx-empty">No expenses recorded against this advance yet.</td></tr>}
+              {!entries.length && <tr><td colSpan={readOnly ? 5 : 6} className="advx-empty">No expenses recorded against this advance yet.</td></tr>}
             </tbody>
-            {entries.length > 0 && <tfoot><tr>{!readOnly && <td />}<td colSpan={3}>Total</td><td className="num">{money(entries.reduce((s, e) => s + (/rejected/i.test(e.status) ? 0 : num(e.amount)), 0))}</td><td colSpan={readOnly ? 1 : 2} /></tr></tfoot>}
+            {entries.length > 0 && <tfoot><tr><td colSpan={3}>Total</td><td className="num">{money(entries.reduce((s, e) => s + (/rejected/i.test(e.status) ? 0 : num(e.amount)), 0))}</td><td colSpan={readOnly ? 1 : 2} /></tr></tfoot>}
           </table></div>
 
           {form && <div className="advx-form">
-            <h3>{form.id ? 'Edit draft expense' : 'Add expense (saved as draft)'}</h3>
+            <h3>{form.id ? 'Edit advance detail' : 'Upload advance detail (saved as draft)'}</h3>
             <div className="advx-form-grid">
               <label>Date<input type="date" value={form.date} max={todayKey()} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
               <label>Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label>
               <label>Supplier / shop<input value={form.supplier_name} onChange={e => setForm({ ...form, supplier_name: e.target.value })} placeholder="Where it was bought" /></label>
               <label>Amount (MMK)<input type="number" min="0" step="any" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder={`Up to ${num(room).toLocaleString('en-US')}`} /><small>Left on this advance: {money(room)}</small></label>
               <label className="wide">What was it for?<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="e.g. SKU purchase 1 – bearings and seals" /></label>
-              <label className="wide">Receipt<input type="file" accept="image/*,.pdf" onChange={e => setForm({ ...form, receipt: e.target.files?.[0] || null })} /><small>{form.receipt ? form.receipt.name : form.receipt_file ? 'A receipt is already attached. Choose a file only to replace it.' : 'Optional while drafting, but required before you submit.'}</small></label>
+              <label className="wide">Receipt<input type="file" accept="image/*,.pdf" onChange={e => setForm({ ...form, receipt: e.target.files?.[0] || null })} /><small>{form.receipt ? form.receipt.name : form.receipt_file ? 'A receipt is already attached. Choose a file only to replace it.' : 'Optional for now, but required before you submit to the admin.'}</small></label>
             </div>
             <div className="advx-form-actions"><button className="secondary-button" disabled={busy} onClick={() => { setForm(null); setError(''); }}>Cancel</button><button className="primary-button" disabled={busy} onClick={saveDraft}>{busy ? 'Saving…' : form.id ? 'Save changes' : 'Save as draft'}</button></div>
           </div>}
@@ -170,8 +163,8 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
 
       <div className="modal-footer advx-footer">
         <button className="secondary-button" onClick={onClose} disabled={busy}>Close</button>
-        {canRecord && !form && <button className="secondary-button" disabled={busy || remaining <= 0} title={remaining <= 0 ? 'The whole advance is already accounted for' : ''} onClick={() => { setError(''); setForm(emptyForm()); }}><Plus size={15} />Add expense</button>}
-        {!readOnly && drafts.length > 0 && <button className="primary-button" disabled={busy || Boolean(form)} onClick={submit}><Send size={15} />{selectedDrafts.length ? `Submit selected (${selectedDrafts.length}) · ${money(toSubmitTotal)}` : `Submit all drafts (${drafts.length}) · ${money(toSubmitTotal)}`}</button>}
+        {canRecord && !form && <button className="secondary-button" disabled={busy || remaining <= 0} title={remaining <= 0 ? 'The whole advance is already accounted for' : ''} onClick={() => { setError(''); setForm(emptyForm()); }}><Upload size={15} />Upload advance details</button>}
+        {canRecord && <button className="primary-button" disabled={busy || Boolean(form) || !drafts.length} title={drafts.length ? '' : 'Upload advance details first'} onClick={submit}><Send size={15} />Submit to admin{drafts.length ? ` (${drafts.length}) · ${money(toSubmitTotal)}` : ''}</button>}
       </div>
     </section>
   </div>;
