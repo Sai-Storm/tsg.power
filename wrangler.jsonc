@@ -1,0 +1,18 @@
+// Cloudflare Workers (static assets) deployment for the TSG app.
+//   npm run deploy        build and upload (after `npx wrangler login`)
+//   npm run cf:preview    build and serve locally the way Cloudflare will
+// The app has no server code: Cloudflare only serves the files in dist/.
+// Supabase settings (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are read at
+// BUILD time, from .env locally or from the build variables in Cloudflare.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tsg-power",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    // Any address that is not a file (e.g. /my-claims) opens the app, which
+    // then shows the right page.
+    "not_found_handling": "single-page-application"
+  },
+  "observability": { "enabled": true }
+}

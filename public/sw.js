@@ -1,4 +1,4 @@
-const CACHE = 'tsg-app-v2';
+const CACHE = 'tsg-app-v3';
 const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/tsg-logo.png', '/tsg-mark.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {
@@ -42,7 +42,10 @@ self.addEventListener('fetch', event => {
   // right. Keeping them lets the app open on site without a connection.
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
-      if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(cache => cache.put(request, copy)); }
+      // A file missing after a deploy comes back as the app page (HTML) on
+      // Cloudflare; never store that under a script's name.
+      const isPage = (response.headers.get('content-type') || '').includes('text/html');
+      if (response.ok && !isPage) { const copy = response.clone(); caches.open(CACHE).then(cache => cache.put(request, copy)); }
       return response;
     })));
     return;

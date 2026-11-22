@@ -57,6 +57,37 @@ Use **Continue as Admin** or **Continue as Staff** to preview the demo workspace
    update public.profiles set role = 'Admin' where email = 'you@example.com';
    ```
 
+## Hosting on Cloudflare
+
+The app is a static site: Cloudflare serves the built files in `dist/` and the
+browser talks to Supabase directly. Settings are in `wrangler.jsonc`; response
+headers (caching, security) are in `public/_headers`.
+
+**Automatic deploys from GitHub (recommended).** In the Cloudflare dashboard:
+**Workers & Pages → Create → Import a repository**, pick this repository, then set
+
+| Setting | Value |
+|---|---|
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
+| Build variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (same values as `.env`) |
+
+Every push to `main` then builds and goes live. The Supabase values are read
+while building, so after changing them start a new deploy.
+
+**Deploy from your computer instead:**
+
+```sh
+npx wrangler login
+npm run deploy          # builds with your .env and uploads
+npm run cf:preview      # serves the build locally the way Cloudflare will (http://localhost:8787)
+```
+
+**After the first deploy**, add the new address (e.g. `https://tsg-power.<account>.workers.dev`
+or your own domain) in Supabase → Authentication → URL Configuration: set it as the
+**Site URL** and add `https://<that-address>/**` to **Redirect URLs**, or Google sign-in
+will send people back to the old site.
+
 ## How it works
 
 - `supabase/migrations/` creates the PostgreSQL schema, display views, indexes, triggers, document numbering, RLS policies, storage bucket and workflow RPCs.
@@ -84,7 +115,7 @@ and the access rules (staff only see their own advances, claims and nothing of s
 
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, build, the database tests and the browser
 smoke tests on every push.
-In Render, set **Auto-Deploy → After CI Checks Pass** so a failing commit is never deployed.
+Cloudflare deploys every push to `main`; check the GitHub Actions result before merging to `main`.
 
 ## Roles
 
@@ -118,8 +149,8 @@ supabase migration repair --status applied 20261114000000 20261114000100   # …
 ```
 
 Then in GitHub: **Settings → Secrets and variables → Actions** add the secrets `SUPABASE_ACCESS_TOKEN`,
-`SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID` and the variable `AUTO_DB_PUSH = true`. Together with
-Render's *After CI Checks Pass* the database is always updated before the new app goes live.
+`SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID` and the variable `AUTO_DB_PUSH = true`. The database
+update runs in GitHub Actions, alongside Cloudflare's deploy of the new app.
 
 ## Email and Telegram alerts
 
