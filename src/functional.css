@@ -949,3 +949,25 @@ html[data-theme="dark"] .ask-input small{color:#bccddd}
   .list-actions{flex-wrap:wrap}
   .module-heading{flex-wrap:wrap}
 }
+
+/* Send notification (admin) */
+.send-note-modal{width:min(620px,calc(100vw - 24px))}
+.send-note-audience{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;border:0}
+.send-note-audience legend{margin-bottom:8px;font-size:14px;font-weight:700}
+.special-fields .send-note-audience label{flex:1 1 150px;flex-direction:row;align-items:center;gap:8px;min-height:46px;padding:0 12px;border:1.5px solid #d3dde8;border-radius:10px;cursor:pointer;font-weight:700}
+.special-fields .send-note-audience label.selected{border-color:#1769e0;background:#eef4fd;color:#0b57c2}
+.special-fields .send-note-audience input,.special-fields .send-note-people input[type=checkbox]{width:18px;height:18px;min-height:0;padding:0;accent-color:#1769e0}
+.send-note-people .search-box{margin-bottom:8px}
+.send-note-people ul{max-height:220px;overflow:auto;margin:0;padding:0;list-style:none;border:1px solid #d3dde8;border-radius:10px}
+.send-note-people li{border-bottom:1px solid #e8edf3}
+.send-note-people li:last-child{border-bottom:0}
+.special-fields .send-note-people label{flex-direction:row;align-items:center;gap:10px;padding:9px 12px;cursor:pointer}
+.send-note-people label span{display:flex;flex-direction:column}
+.send-note-people small{font-size:12.5px;color:#5b6b7c;font-weight:500}
+.send-note-people li.empty{padding:12px;color:#5b6b7c}
+.send-note-people p,.send-note-error{font-size:13px!important}
+.send-note-error{color:#b3261e!important}
+html[data-theme="dark"] .special-fields .send-note-audience label{border-color:rgba(220,240,255,.2)}
+html[data-theme="dark"] .special-fields .send-note-audience label.selected{background:#1b3a62;border-color:#9cc4ff;color:#eef6fc}
+html[data-theme="dark"] .send-note-people ul,html[data-theme="dark"] .send-note-people li{border-color:rgba(220,240,255,.15)}
+html[data-theme="dark"] .send-note-people small,html[data-theme="dark"] .send-note-people li.empty{color:#bccddd}

@@ -427,6 +427,47 @@ ${pdf.COMPANY.signatory.title}`,
   }
 }
 
+// Database plumbing that means nothing on paper: ids, audit stamps, files, flags.
+const TECHNICAL_KEY = /(^id$|_id$|_ids$|_by$|^created_at$|^updated_at$|^deleted_at$|avatar|signature|password|token|^receipt_files?$|^attachments$|^documents$|^photos?$|^is_|^record$|^search)/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-][\d:]+)?)?$/;
+const labelKey = label => String(label || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const readable = value => {
+  const text = printableValue(value);
+  if (!text || text === '—' || UUID.test(text)) return '';
+  return ISO_DATE.test(text) ? pdf.formatDate(text) : text;
+};
+
+// One record as a portrait "label: value" sheet: the fields shown on screen
+// first, then any other readable field of the record (never ids or audit data).
+export function printRecordDetails(title, columns, values, record = {}) {
+  const pairs = [];
+  const labels = new Set();
+  const shown = new Set();
+  const add = (label, value) => {
+    const text = readable(value);
+    if (!label || !text || labels.has(labelKey(label))) return;
+    labels.add(labelKey(label));
+    shown.add(text);
+    pairs.push([humanizeKey(label), text]);
+  };
+  columns.forEach((column, index) => add(column, values[index]));
+  Object.entries(record || {}).forEach(([key, value]) => {
+    if (key.startsWith('_') || TECHNICAL_KEY.test(key)) return;
+    const text = readable(value);
+    if (text && !shown.has(text)) add(key, value);
+  });
+  const heading = String(title || 'Record');
+  try {
+    pdf.openDocument({
+      title: `${heading} - TSG`,
+      body: `<h1 class="doc-title">${pdf.esc(heading.toUpperCase())}</h1>${pdf.kv(pairs, 'details')}`,
+    });
+  } catch (error) {
+    alertDialog(error.message, { title: 'Could not open the document' });
+  }
+}
+
 export function printReport(title, columns, rows, filters) {
   try {
     pdf.openTableReport({

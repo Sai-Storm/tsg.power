@@ -6,7 +6,7 @@ import { formSchemas } from '../../formSchemas.js';
 import FormField, { readFormValues } from '../../components/FormField.jsx';
 import { AttachmentGallery, collectAttachments } from '../../Attachments.jsx';
 import { initials, lookupOptions, lookupRecords, rowAvatar, toDisplayRow } from '../../lib/records.js';
-import { canPrintDocument, documentLabel, printRecordDocument, printReport } from '../../lib/print.js';
+import { canPrintDocument, documentLabel, printRecordDetails, printRecordDocument } from '../../lib/print.js';
 
 // The general-purpose record dialog: view, create, edit, delete, plus the
 // smaller workflow forms (payment, job note, completion report, accounts).
@@ -136,10 +136,6 @@ export default function RecordDialog({ dialog, columns, typedConfirm, setTypedCo
   const accountInvalid = isAccountCreate && (account.name.trim().length < 2 || !/^\S+@\S+\.\S+$/.test(account.email) || account.username.trim().length < 3 || account.password.length < 10);
   const reportInvalid = isServiceReport && (!report.workDone.trim() || !report.findings.trim() || !report.complaint.trim() || !report.testResults.trim() || !report.technicianName.trim() || !report.customerName.trim() || !report.customerSignature || !report.technicianSignature || !report.approved || report.finishedAt < report.startedAt);
   const confirmDisabled = (type === 'force' && typedConfirm !== 'DELETE') || myAccountInvalid || (isReset && password.length < 10) || accountInvalid || (isJobNote && !jobNote.trim()) || reportInvalid || (isSchemaForm && formInvalid);
-
-  const recordDetails = isView && dialog.row?._record ? Object.entries(dialog.row._record).filter(([key, value]) => !key.startsWith('_') && value != null && value !== '') : null;
-  const viewColumns = recordDetails ? recordDetails.map(([key]) => key.replaceAll('_', ' ')) : columns;
-  const viewValues = recordDetails ? recordDetails.map(([, value]) => (typeof value === 'object' ? JSON.stringify(value) : String(value))) : values;
 
   const eyebrow = isMyAccount ? 'MY ACCOUNT' : isAccountPhoto ? 'ACCOUNT PROFILE' : isJobNote ? 'JOB NOTE' : isPayment ? 'RECORD CUSTOMER PAYMENT'
     : isServiceReport ? 'COMPLETION REPORT' : type === 'force' ? 'FORCE DELETE' : isReset ? 'ADMIN PASSWORD RESET' : isDelete ? 'DELETE RECORD' : isView ? 'RECORD DETAILS' : 'RECORD';
@@ -290,7 +286,7 @@ export default function RecordDialog({ dialog, columns, typedConfirm, setTypedCo
 
       <div className="modal-footer">
         <button className="secondary-button" onClick={onClose}>Cancel</button>
-        {isView && <button className="secondary-button" onClick={() => (canPrintDocument(dialog.module, dialog.row) ? printRecordDocument(dialog.module, dialog.row, columns) : printReport(dialog.row?.[0] || 'Record', viewColumns, [viewValues], {}))}>
+        {isView && <button className="secondary-button" onClick={() => (canPrintDocument(dialog.module, dialog.row) ? printRecordDocument(dialog.module, dialog.row, columns) : printRecordDetails(dialog.row?.[0] || 'Record', columns, values, dialog.row?._record))}>
           <Download size={15} />{canPrintDocument(dialog.module, dialog.row) ? `Download ${documentLabel(dialog.module)} PDF` : 'Print / Save PDF'}
         </button>}
         {!isView && <button className={type === 'force' ? 'danger-button' : 'primary-button'} disabled={confirmDisabled} onClick={confirm}>{confirmLabel}</button>}

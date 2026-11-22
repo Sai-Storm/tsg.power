@@ -80,9 +80,14 @@ const BASE_CSS = `
   table.items tfoot .total .sum{border-top:1.3px solid #1d2633;border-bottom:4px double #1d2633}
   table.items tfoot .plain .sum{border-top:0}
   table.grid{width:100%;border-collapse:collapse}
-  table.grid th{font-weight:700;text-align:left;padding:1.6mm 2mm;border-bottom:1.6px solid #1d2633;vertical-align:bottom}
-  table.grid td{padding:1.3mm 2mm;border-bottom:.6px solid #d4d8de;vertical-align:top;overflow-wrap:anywhere}
-  table.grid .num{text-align:right;white-space:nowrap}
+  .kv.details{grid-template-columns:48mm 1fr;row-gap:0;border-top:1px solid #1d2633}
+  .kv.details span,.kv.details b{padding:2mm 2mm;border-bottom:.6px solid #d4d8de}
+  .kv.details span{font-weight:700;background:#f6f7f9}
+  .kv.details b{white-space:pre-wrap;overflow-wrap:break-word}
+  table.grid{width:100%;border-collapse:collapse;font-size:11px}
+  table.grid th{font-weight:700;text-align:left;padding:1.6mm 2mm;border-bottom:1.6px solid #1d2633;vertical-align:bottom;word-break:normal;overflow-wrap:normal;hyphens:none}
+  table.grid td{padding:1.3mm 2mm;border-bottom:.6px solid #d4d8de;vertical-align:top;word-break:normal;overflow-wrap:break-word;hyphens:none}
+  table.grid .num,table.grid .nowrap{white-space:nowrap}
   table.grid tbody tr:nth-child(even) td{background:#fafbfc}
   table.grid tr{break-inside:avoid}
   .text{white-space:pre-wrap;margin:0 0 2mm}
@@ -153,7 +158,10 @@ export function itemsTable(items, totals = [], headers = {}) {
 export function gridTable(columns, rows, emptyText = 'No records.') {
   const isNum = index => { const values = rows.map(row => String(row[index] ?? '').trim()).filter(value => value && value !== '—'); return values.length > 0 && values.every(value => /^(MMK\s*)?-?[\d,]+(\.\d+)?%?$/.test(value)); };
   const numeric = columns.map((_, index) => isNum(index));
-  return `<table class="grid"><thead><tr>${columns.map((column, index) => `<th class="${numeric[index] ? 'num' : ''}">${esc(column)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${row.map((cell, index) => `<td class="${numeric[index] ? 'num' : ''}">${escLines(cell ?? '') || '—'}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${columns.length || 1}">${esc(emptyText)}</td></tr>`}</tbody></table>`;
+  // Short single-word values (dates like 21-Nov-26, statuses, codes) never wrap.
+  const short = columns.map((_, index) => rows.every(row => { const value = String(row[index] ?? '').trim(); return value.length <= 14 && !/\s/.test(value); }));
+  const cls = index => (numeric[index] ? 'num' : short[index] ? 'nowrap' : '');
+  return `<table class="grid"><thead><tr>${columns.map((column, index) => `<th class="${numeric[index] ? 'num' : ''}">${esc(column)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${row.map((cell, index) => `<td class="${cls(index)}">${escLines(cell ?? '') || '—'}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${columns.length || 1}">${esc(emptyText)}</td></tr>`}</tbody></table>`;
 }
 
 function schedulePrint(win) {

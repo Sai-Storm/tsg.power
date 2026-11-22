@@ -188,12 +188,14 @@ const PRINT_COLUMNS = {
 
 const PRINT_SKIP_KEY = /(^id$|_id$|_by$|^created_at$|^updated_at$|^deleted_at$|^avatar$|^attachments$|^documents$|^receipt_file$|^technician_signature$|^customer_signature$|^equipment_records$|^assigned_employees$|^materials$|^notes$|^is_active$|^password$|^record$|^access_token$|^refresh_token$)/;
 
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function printKeys(rows, resource) {
   const available = rows.length ? Object.keys(rows[0]) : [];
-  const preferred = PRINT_COLUMNS[resource];
-  const base = preferred && preferred.length
-    ? preferred.filter(key => available.includes(key))
-    : available.filter(key => !PRINT_SKIP_KEY.test(key)).slice(0, 12);
+  const preferred = (PRINT_COLUMNS[resource] || []).filter(key => available.includes(key));
+  const base = preferred.length >= 3
+    ? preferred
+    : available.filter(key => !PRINT_SKIP_KEY.test(key) && !rows.every(row => row[key] == null || row[key] === '' || UUID_TEXT.test(String(row[key])))).slice(0, 12);
   const visible = rows.length
     ? base.filter(key => rows.some(row => {
         const value = row[key];
@@ -325,9 +327,42 @@ async function uploadFormData(form) {
   return payload;
 }
 
+async function currentUserId() {
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.user?.id || null;
+}
+
+// Admin message to staff: one notification row per recipient.
+//   audience: 'staff' (all active staff) | 'everyone' (all active users) | 'people' (recipients: [profile id])
+async function sendNotification(payload = {}) {
+  const title = String(payload.title || '').trim();
+  if (!title) throw new Error('Write a title for the notification.');
+  const me = await currentUserId();
+  let ids = Array.isArray(payload.recipients) ? payload.recipients.filter(Boolean) : [];
+  if (payload.audience !== 'people') {
+    let query = supabase.from('profiles').select('id, role').eq('is_active', true);
+    if (payload.audience !== 'everyone') query = query.eq('role', 'Staff');
+    const { data, error } = await query;
+    if (error) throw new Error(errorMessage(error));
+    ids = (data || []).map(profile => profile.id);
+  }
+  ids = [...new Set(ids)].filter(id => id !== me);
+  if (!ids.length) throw new Error('There is no one to send this to. Choose at least one person.');
+  const details = String(payload.details || '').trim() || null;
+  const related = String(payload.related_to || '').trim() || 'Message from admin';
+  const { error } = await supabase.from('notifications').insert(ids.map(user_id => ({ user_id, title, details, related_to: related })));
+  if (error) throw new Error(errorMessage(error));
+  return { sent: ids.length };
+}
+
 async function listResource(resource, params) {
   const view = READ_VIEW[resource] || resource;
   let query = supabase.from(view).select('*', { count: 'exact' });
+  // Everyone's inbox is their own, admins included (admins may read all rows).
+  if (resource === 'notifications') {
+    const me = await currentUserId();
+    if (me) query = query.eq('user_id', me);
+  }
 
   const status = params.get('status');
   if (status) query = query.ilike('status', status);
@@ -485,7 +520,13 @@ async function deleteResource(resource, id, params) {
   }
   if (resource === 'notifications') {
     let query = supabase.from('notifications').delete();
-    query = id ? query.eq('id', id) : query.not('id', 'is', null);
+    if (id) query = query.eq('id', id);
+    else {
+      // "Clear all" empties only the signed-in user's inbox.
+      const me = await currentUserId();
+      if (!me) throw new Error('Sign in again to clear notifications.');
+      query = query.eq('user_id', me);
+    }
     const { error } = await query;
     if (error) throw new Error(errorMessage(error));
     return null;
@@ -605,6 +646,7 @@ export async function apiRequest(path, options = {}) {
 
   // Daily advance reminders (safe to repeat: at most one reminder per advance per day).
   if (method === 'POST' && resource === 'advances' && id === 'reminders' && !action) return rpc('send_advance_reminders');
+  if (method === 'POST' && resource === 'notifications' && id === 'send' && !action) return sendNotification(payload);
 
   if (method === 'POST' && action) {
     const result = await workflowRoute(resource, id, action, payload);

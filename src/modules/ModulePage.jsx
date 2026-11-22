@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, Bell, Check, ChevronLeft, ChevronRight, Clock3, Download, FileDown, Filter, MoreHorizontal, Plus, ReceiptText, Search, ShieldCheck, Trash2, Wrench } from 'lucide-react';
+import { Activity, BarChart3, Bell, Check, ChevronLeft, ChevronRight, Clock3, Download, FileDown, Filter, MoreHorizontal, Plus, ReceiptText, Search, Send, ShieldCheck, Trash2, Wrench } from 'lucide-react';
 import { apiRequest, exportModule } from '../api/client.js';
 import { moduleInfo, navigation } from '../data.js';
 import { formSchemas } from '../formSchemas.js';
@@ -19,6 +19,7 @@ import SalaryPaymentDialog from './dialogs/SalaryPaymentDialog.jsx';
 import StaffProfileDialog from './dialogs/StaffProfileDialog.jsx';
 import StockMovementDialog from './dialogs/StockMovementDialog.jsx';
 import JobFinanceDialog from './dialogs/JobFinanceDialog.jsx';
+import SendNotificationDialog from './dialogs/SendNotificationDialog.jsx';
 
 const PAGE_SIZE = 10;
 
@@ -128,7 +129,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   };
 
   const clearNotifications = async () => {
-    if (!await confirmDialog('Delete all notifications? This cannot be undone.', { title: 'Clear notifications', confirmLabel: 'Delete all', tone: 'danger' })) return;
+    if (!await confirmDialog('Delete all of your notifications? This cannot be undone.', { title: 'Clear notifications', confirmLabel: 'Delete all', tone: 'danger' })) return;
     try {
       await apiRequest('/notifications?all=true', { method: 'DELETE' });
       await queryClient.invalidateQueries({ queryKey: ['module', 'notifications'] });
@@ -185,6 +186,11 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
         }
         case 'job-close': await post(`/jobs/${recordId}/close`, { payment_status: dialog.paymentStatus, payment_amount: dialog.paymentAmount, due_date: dialog.dueDate }); break;
         case 'advance-issue': await post(`/advances/${recordId}/issue`, dialog.issue); break;
+        case 'send-notification': {
+          const result = await post('/notifications/send', dialog.notification);
+          dialog.done = `Notification sent to ${result.sent} ${result.sent === 1 ? 'person' : 'people'}.`;
+          break;
+        }
         case 'job-cancel': await put(`/jobs/${recordId}`, { status: 'Cancelled', cancellation_reason: dialog.reason }); break;
         case 'stock-movement': await post(`/material-requests/${recordId}/${dialog.movement}`, dialog.movementPayload); break;
         case 'payment': await post(`/invoices/${recordId}/payments`, dialog.payment); break;
@@ -199,7 +205,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
           else if (dialog.type === 'edit') await apiRequest(`/${dialog.apiResource || apiEndpoint(slug)}/${recordId}`, { method: 'PUT', body: requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)) });
       }
       await refresh();
-      notify(SUCCESS[dialog.type]
+      notify(dialog.done || SUCCESS[dialog.type]
         || (dialog.purge ? 'Record permanently purged.' : isRemoving ? 'Record moved to the Recycle Bin.' : dialog.accountMode ? 'User account created.'
           : dialog.module === 'my-advance' ? 'Advance request submitted for approval.' : dialog.type === 'create' ? 'Record created.' : 'Changes saved.'));
       setDialog(null);
@@ -306,6 +312,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
     if (['job-invoice', 'job-close', 'job-cancel'].includes(dialog.type)) return <JobFinanceDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'advance-expenses') return <AdvanceExpensesDialog key={key} row={dialog.row} columns={info.columns} readOnly={user.role !== 'Staff'} isAdmin={isAdmin} notify={notify} onClose={closeDialog} onChanged={() => { queryClient.invalidateQueries({ queryKey: ['module'] }); queryClient.invalidateQueries({ queryKey: ['dashboard'] }); }} />;
     if (dialog.type === 'staff-profile') return <StaffProfileDialog key={key} dialog={dialog} columns={info.columns} onClose={closeDialog} onConfirm={confirmWith} />;
+    if (dialog.type === 'send-notification') return <SendNotificationDialog key={key} user={user} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'advance-issue') return <AdvanceIssueDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'salary-payment') return <SalaryPaymentDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'stock-movement') return <StockMovementDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
@@ -317,6 +324,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
       <div><div className="eyebrow">OPERATIONS</div><h1>{info.title}</h1><p>{info.description}</p></div>
       {slug === 'advances' && isAdmin && <Link className="secondary-button" to="/advance-overview"><BarChart3 size={15} />Advance overview</Link>}
       {slug === 'accounts' && isAdmin && <button className="secondary-button" onClick={() => setDialog({ type: 'my-account', user })}><ShieldCheck size={15} />My account</button>}
+      {slug === 'notifications' && isAdmin && <button className="primary-button" onClick={() => setDialog({ type: 'send-notification', title: 'send' })}><Send size={16} />Send notification</button>}
       {canCreate && <button className="primary-button" onClick={() => create()}><Plus size={16} />{createLabel}</button>}
       {canCreate && slug === 'cash-claims' && <>
         <button className="secondary-button" onClick={() => create('cash-entry')}><Plus size={15} />Cash movement</button>
