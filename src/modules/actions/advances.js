@@ -1,9 +1,12 @@
 import { approveReject, statusOf } from './shared.js';
 import { isAdminRole, isEmployeeRole } from '../../lib/roles.js';
+import { cell } from '../../lib/records.js';
+
+const isClaim = (row, columns) => /claim/i.test(String(cell(row, columns, 'Type') || ''));
 
 // Staff advances: request -> approve -> release -> settlement -> review -> reconcile.
-export function myAdvanceActions(_row, _columns, role) {
-  return isEmployeeRole(role) ? [{ label: 'Advance details', action: 'advance-expenses' }] : [];
+export function myAdvanceActions(row, columns, role) {
+  return isEmployeeRole(role) ? [{ label: isClaim(row, columns) ? 'Claim details' : 'Advance details', action: 'advance-expenses' }] : [];
 }
 
 export function advanceStageActions(status) {

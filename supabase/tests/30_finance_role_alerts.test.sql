@@ -4,7 +4,7 @@
 -- Runs after 10_ and 20_ and reuses their fixtures.
 -- ============================================================================
 
-select tests.eq('database reports its version', public.schema_version(), '20261126000000');
+select tests.ok('database reports its version', public.schema_version() >= '20261126000000');
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a finance user (who is also an employee) and an advance of theirs

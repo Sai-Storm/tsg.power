@@ -111,6 +111,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   };
 
   const create = (requestedForm = slug) => {
+    if (requestedForm === 'my-claim') return setDialog({ type: 'create', fields: formSchemas['my-claim'], apiResource: 'advance-claims', title: 'Claim expenses you paid', module: 'my-claim' });
     const form = requestedForm === 'my-advances' ? 'my-advance' : requestedForm === 'advances' ? 'new-advance' : typeof requestedForm === 'string' ? requestedForm : slug;
     const accountMode = form === 'accounts';
     const apiResource = ({ 'cash-claims': 'expenses', 'new-advance': 'advances', 'my-advance': 'advances', 'cash-entry': 'cash-entries' })[form] || apiEndpoint(form);
@@ -204,6 +205,16 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
           if (dialog.purge) await apiRequest(`/recycle-bin/${recordId}?purge=true`, { method: 'DELETE' });
           else if (isRemoving) await apiRequest(`/${apiEndpoint(slug)}/${recordId}${dialog.type === 'force' ? '?force=true' : ''}`, { method: 'DELETE' });
           else if (dialog.accountMode) await post('/users', dialog.account);
+          else if (dialog.type === 'create' && dialog.module === 'my-claim') {
+            // Go straight into the new claim so the expenses can be added.
+            const claim = await post('/advance-claims', requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)));
+            const row = [claim?.number || ''];
+            Object.defineProperty(row, '_id', { value: claim?.id, enumerable: false });
+            await refresh();
+            notify(`Claim ${claim?.number || ''} opened. Add your expenses with receipts.`);
+            setDialog({ type: 'advance-expenses', row });
+            return;
+          }
           else if (dialog.type === 'create') await post(`/${dialog.apiResource || apiEndpoint(slug)}`, requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)));
           else if (dialog.type === 'edit') await apiRequest(`/${dialog.apiResource || apiEndpoint(slug)}/${recordId}`, { method: 'PUT', body: requestBody(dialog.payload || toApiRecord(info.columns, dialog.values)) });
       }
@@ -355,6 +366,7 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
       {slug === 'advances' && manages && <Link className="secondary-button" to="/advance-overview"><BarChart3 size={15} />Advance overview</Link>}
       {slug === 'accounts' && isAdmin && <button className="secondary-button" onClick={() => setDialog({ type: 'my-account', user })}><ShieldCheck size={15} />My account</button>}
       {slug === 'notifications' && isAdmin && <button className="primary-button" onClick={() => setDialog({ type: 'send-notification', title: 'send' })}><Send size={16} />Send notification</button>}
+      {canCreate && slug === 'my-advances' && <button className="secondary-button" onClick={() => create('my-claim')}><ReceiptText size={15} />Claim expenses</button>}
       {canCreate && <button className="primary-button" onClick={() => create()}><Plus size={16} />{createLabel}</button>}
       {canCreate && slug === 'cash-claims' && <>
         <button className="secondary-button" onClick={() => create('cash-entry')}><Plus size={15} />Cash movement</button>

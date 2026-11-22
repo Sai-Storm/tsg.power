@@ -85,6 +85,8 @@ html[data-theme="dark"] .modal.advx-modal{
 .advx-status-submitted,.advx-status-in-progress,.advx-status-issued{background:var(--ax-blue-bg);color:var(--ax-blue);border-color:var(--ax-blue)}
 .advx-status-approved,.advx-status-paid,.advx-status-settlement-approved,.advx-status-settled{background:var(--ax-green-bg);color:var(--ax-green);border-color:var(--ax-green)}
 .advx-status-rejected{background:var(--ax-red-bg);color:var(--ax-red);border-color:var(--ax-red)}
+.advx-status-cancelled{background:var(--ax-soft);color:var(--ax-muted, var(--ax-text));border-color:var(--ax-line)}
+.advx-title .advx-status-claim{margin-left:6px;background:var(--ax-soft);color:var(--ax-blue);border-style:dashed;border-color:var(--ax-blue)}
 
 /* Form */
 .advx-form{padding:16px;border:2px solid var(--ax-blue);border-radius:14px;background:var(--ax-soft)}

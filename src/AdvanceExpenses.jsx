@@ -12,6 +12,8 @@ import './advance.css';
 //   Manager  approve / reject each expense -> approve settlement or return it
 //   Finance  record returned cash or pay the extra -> close the advance
 // The Admin role acts as Manager and Finance.
+// An expense claim (kind 'Claim') is the same window with an advance of 0: the
+// staff member paid with their own money and is reimbursed the approved total.
 
 const CATEGORIES = ['SKU / Materials', 'Spare parts', 'Transportation', 'Fuel', 'Meals', 'Accommodation', 'Tools', 'Office', 'Other'];
 const num = value => { const n = Number(String(value ?? '').replace(/[^0-9.-]/g, '')); return Number.isFinite(n) ? n : 0; };
@@ -22,10 +24,11 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const shortDate = value => { if (!value) return ''; const d = new Date(`${String(value).slice(0, 10)}T00:00:00`); return Number.isNaN(d.valueOf()) ? String(value) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const statusClass = status => `advx-status advx-status-${lower(status || 'draft').replace(/[^a-z]+/g, '-')}`;
 // supplier_name / notes are no longer asked for, but kept so editing a draft never wipes them.
-const emptyForm = () => ({ id: '', date: todayKey(), category: CATEGORIES[0], supplier_name: '', description: '', amount: '', notes: '', newFiles: [], existingFiles: [], removeFiles: [] });
+const emptyForm = () => ({ id: '', date: todayKey(), category: CATEGORIES[0], supplier_name: '', description: '', amount: '', notes: '', exception_reason: '', newFiles: [], existingFiles: [], removeFiles: [] });
 const isOpen = status => ['issued', 'open', 'partially settled'].includes(lower(status));
-const stageOf = status => ({ 'pending approval': 0, approved: 1, issued: 3, open: 3, 'partially settled': 3, 'under review': 4, 'settlement approved': 5, settled: 6, closed: 6 })[lower(status)] ?? 0;
+const stageOf = status => ({ 'pending approval': 0, approved: 1, issued: 3, open: 3, 'partially settled': 3, 'under review': 4, 'settlement approved': 5, settled: 6, closed: 6, cancelled: 6 })[lower(status)] ?? 0;
 const stageLabel = status => (isOpen(status) ? 'In progress' : status || '—');
+const hasReason = entry => Boolean(String(entry?.exception_reason || '').trim());
 const receiptsOf = entry => (Array.isArray(entry.receipt_files) && entry.receipt_files.length ? entry.receipt_files : entry.receipt_file ? [entry.receipt_file] : []);
 
 export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinance = isAdmin, notify, onClose, onChanged }) {
@@ -67,7 +70,10 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
   const canReview = Boolean(isAdmin && advance?.can_review);
   const canReconcile = Boolean(isFinance && advance?.can_reconcile);
   const jobNumber = advance?.job_number && advance.job_number !== '—' ? advance.job_number : '';
-  const missingReceipts = drafts.filter(d => !receiptsOf(d).length).length;
+  const isClaim = advance?.kind === 'Claim';
+  const noun = isClaim ? 'claim' : 'advance';
+  const missingReceipts = drafts.filter(d => !receiptsOf(d).length && !hasReason(d)).length;
+  const canCancel = canRecord && isClaim && !entries.some(e => !['draft', 'rejected'].includes(lower(e.status))) && !waiting.length;
   const editingAmount = form?.id ? num(drafts.find(d => String(d.id) === form.id)?.amount) : 0;
   const formTotalAfter = recorded - editingAmount + num(form?.amount);
 
@@ -95,7 +101,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
     const value = num(form.amount);
     if (!form.description.trim()) { setError('Write what the money was spent on.'); return; }
     if (value <= 0) { setError('Enter the amount spent.'); return; }
-    const fields = { date: form.date, category: form.category, supplier_name: form.supplier_name.trim(), description: form.description.trim(), amount: String(value), notes: form.notes.trim() };
+    const fields = { date: form.date, category: form.category, supplier_name: form.supplier_name.trim(), description: form.description.trim(), amount: String(value), notes: form.notes.trim(), exception_reason: form.exception_reason.trim() };
     const keepOnDevice = async () => {
       await saveOfflineDraft(advanceId, fields, form.newFiles);
       setForm({ ...emptyForm(), date: form.date, category: form.category });
@@ -136,13 +142,22 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
 
   const submitSettlement = async () => {
     if (!drafts.length) return;
-    if (missingReceipts) { setError(`${missingReceipts} expense${missingReceipts === 1 ? ' has' : 's have'} no receipt. Edit ${missingReceipts === 1 ? 'it' : 'them'} and add the receipt first.`); return; }
+    if (missingReceipts) { setError(`${missingReceipts} expense${missingReceipts === 1 ? ' has' : 's have'} no receipt. Edit ${missingReceipts === 1 ? 'it' : 'them'} and add the receipt, or explain why there is none.`); return; }
     const o = outcome(recorded);
     const tail = o.kind === 'return' ? `You return ${money(o.value)}.` : o.kind === 'reimburse' ? `The company owes you ${money(o.value)}.` : 'The advance is fully used.';
-    if (!await confirmDialog(`Send ${drafts.length} expense${drafts.length === 1 ? '' : 's'} (${money(draftTotal)}) to the manager?\n\nAdvance ${money(amount)} · spent ${money(recorded)}\n${tail}\n\nYou cannot edit them after sending unless the manager returns them.`, { title: 'Submit to manager', confirmLabel: 'Submit' })) return;
+    const summary = isClaim ? `Claim total ${money(recorded)}. Finance pays you once the manager approves it.` : `Advance ${money(amount)} · spent ${money(recorded)}\n${tail}`;
+    if (!await confirmDialog(`Send ${drafts.length} expense${drafts.length === 1 ? '' : 's'} (${money(draftTotal)}) to the manager?\n\n${summary}\n\nYou cannot edit them after sending unless the manager returns them.`, { title: 'Submit to manager', confirmLabel: 'Submit' })) return;
     run(async () => {
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/submit-settlement`, { method: 'POST', body: JSON.stringify({}) });
     }, 'Sent to the manager.');
+  };
+
+  const cancelClaim = async () => {
+    if (!await confirmDialog(`Cancel ${advance?.number}? ${drafts.length ? `Its ${drafts.length} draft expense${drafts.length === 1 ? '' : 's'} will be deleted.` : ''}`.trim(), { title: 'Cancel claim', confirmLabel: 'Cancel claim', tone: 'danger' })) return;
+    const ok = await run(async () => {
+      await apiRequest(`/advances/${encodeURIComponent(advanceId)}/cancel-claim`, { method: 'POST', body: JSON.stringify({}) });
+    }, 'Claim cancelled.');
+    if (ok) onClose();
   };
 
   // ---- Manager ---------------------------------------------------------------
@@ -166,30 +181,30 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
   // ---- Finance ---------------------------------------------------------------
   const reconcile = async () => {
     const o = outcome(approved);
-    const action = o.kind === 'return' ? `Record ${money(o.value)} returned by staff` : o.kind === 'reimburse' ? `Pay ${money(o.value)} to staff` : 'Close this advance';
-    if (!await confirmDialog(`${action} and close the advance?\n\nThis posts to the cash book against job ${jobNumber || '—'}.`, { title: 'Close advance', confirmLabel: 'Close advance' })) return;
+    const action = o.kind === 'return' ? `Record ${money(o.value)} returned by staff` : o.kind === 'reimburse' ? `Pay ${money(o.value)} to staff` : `Close this ${noun}`;
+    if (!await confirmDialog(`${action} and close the ${noun}?\n\nThis posts to the cash book${jobNumber ? ` against job ${jobNumber}` : ''}.`, { title: `Close ${noun}`, confirmLabel: `Close ${noun}` })) return;
     run(async () => {
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/reconcile`, { method: 'POST', body: JSON.stringify(finance) });
-    }, 'Advance closed.');
+    }, isClaim ? 'Claim paid and closed.' : 'Advance closed.');
   };
 
-  const openEdit = entry => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || CATEGORIES[0], supplier_name: entry.supplier_name || '', description: entry.description || '', notes: entry.notes || '', amount: String(num(entry.amount)), existingFiles: receiptsOf(entry) }); };
+  const openEdit = entry => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || CATEGORIES[0], supplier_name: entry.supplier_name || '', description: entry.description || '', notes: entry.notes || '', exception_reason: entry.exception_reason || '', amount: String(num(entry.amount)), existingFiles: receiptsOf(entry) }); };
   const addFiles = event => { const picked = Array.from(event.target.files || []); setForm(old => ({ ...old, newFiles: [...old.newFiles, ...picked] })); };
   const showActions = canRecord || canReview;
   const formDirty = Boolean(form.id || form.description.trim() || String(form.amount).trim());
-  const next = nextStep(stage, { isAdmin, isFinance, readOnly, hasDrafts: drafts.length > 0, reviewNote: advance?.review_note });
+  const next = nextStep(stage, { isAdmin, isFinance, readOnly, hasDrafts: drafts.length > 0, reviewNote: advance?.review_note, isClaim });
   const fileInputKey = `${form.id || 'new'}-${entries.length}`;
   const formFiles = form.existingFiles.length - form.removeFiles.length + form.newFiles.length;
   const balanceLabel = stage >= 6 ? 'Result' : settlement.kind === 'return' ? 'To return' : settlement.kind === 'reimburse' ? 'To reimburse' : 'Balance';
   const balanceTone = stage >= 6 || settlement.kind === 'even' ? 'green' : settlement.kind === 'return' ? 'amber' : 'red';
 
   return <div className="modal-backdrop advx-backdrop" onMouseDown={event => event.target === event.currentTarget && !busy && onClose()}>
-    <section className="modal advx-modal" role="dialog" aria-label={`Advance ${row?.[0]}`}>
+    <section className="modal advx-modal" role="dialog" aria-label={`${isClaim ? 'Expense claim' : 'Advance'} ${row?.[0]}`}>
       <header className="advx-head">
         <div className="advx-head-main">
-          <div className="advx-title"><h2>{advance?.number || row?.[0]}</h2>{advance && <span className={statusClass(isOpen(status) ? 'in progress' : status)}>{stageLabel(status)}</span>}</div>
+          <div className="advx-title"><h2>{advance?.number || row?.[0]}</h2>{advance && <span className={statusClass(isOpen(status) ? 'in progress' : status)}>{stageLabel(status)}</span>}{isClaim && <span className="advx-status advx-status-claim">Expense claim</span>}</div>
           <p className="advx-sub">
-            <Briefcase size={15} />Job <b>{jobNumber || 'not linked'}</b>
+            <Briefcase size={15} />{isClaim && !jobNumber ? <b>Office expenses (no job order)</b> : <>Job <b>{jobNumber || 'not linked'}</b></>}
             {advance?.staff_name && advance.staff_name !== '—' && <> · {advance.staff_name}</>}
             {advance?.purpose && advance.purpose !== '—' && <> · {advance.purpose}</>}
           </p>
@@ -204,7 +219,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
           <p className={`advx-next advx-next-${next.tone}`}>{next.text}</p>
 
           <section className="advx-tiles">
-            <div className="advx-tile"><span>Advance</span><b>{money(amount)}</b></div>
+            {!isClaim && <div className="advx-tile"><span>Advance</span><b>{money(amount)}</b></div>}
             <div className="advx-tile blue"><span>{usesApproved ? 'Approved spending' : 'Spent'}</span><b>{money(settlementExpenses)}</b></div>
             <div className={`advx-tile ${balanceTone}`}><span>{balanceLabel}</span><b>{stage >= 6 ? closedText(advance) : money(settlement.value)}</b></div>
           </section>
@@ -240,7 +255,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
                         ? files.map((file, index) => (looksLikeFile(file)
                           ? <ReceiptLink key={file} url={file} name={`Receipt ${index + 1} · ${entry.description || entry.number || ''}`} />
                           : <span key={file} className="advx-receipt"><Paperclip size={14} />Receipt {index + 1}</span>))
-                        : <span className="advx-missing">No receipt</span>}
+                        : hasReason(entry) ? <span className="advx-receipt">No receipt: {entry.exception_reason}</span> : <span className="advx-missing">No receipt</span>}
                     </div>
                     {entry.rejection_reason && <div className="advx-item-reason">Rejected: {entry.rejection_reason}</div>}
                   </div>
@@ -274,8 +289,9 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
                 {form.existingFiles.filter(file => !form.removeFiles.includes(file)).map((file, index) => <li key={file}><span>Saved receipt {index + 1}</span><button type="button" onClick={() => setForm(old => ({ ...old, removeFiles: [...old.removeFiles, file] }))}>Remove</button></li>)}
                 {form.newFiles.map((file, index) => <li key={`${file.name}-${index}`}><span>{file.name}</span><button type="button" onClick={() => setForm(old => ({ ...old, newFiles: old.newFiles.filter((_, i) => i !== index) }))}>Remove</button></li>)}
               </ul>}
+              {formFiles === 0 && <label className="wide">No receipt? Say why<input value={form.exception_reason} onChange={e => setForm({ ...form, exception_reason: e.target.value })} placeholder="e.g. Street taxi, no receipt given" /></label>}
             </div>
-            {num(form.amount) > 0 && formTotalAfter > amount && <p className="advx-warn">This is {money(formTotalAfter - amount)} over the advance. The company reimburses it after approval.</p>}
+            {!isClaim && num(form.amount) > 0 && formTotalAfter > amount && <p className="advx-warn">This is {money(formTotalAfter - amount)} over the advance. The company reimburses it after approval.</p>}
             <div className="advx-form-actions">
               {formDirty && <button className="advx-btn" disabled={busy} onClick={() => { setForm(emptyForm()); setError(''); }}>{form.id ? 'Cancel' : 'Clear'}</button>}
               <button className="advx-btn primary" disabled={busy} onClick={saveDraft}><Save size={16} />{busy ? 'Saving…' : form.id ? 'Save changes' : 'Save draft'}</button>
@@ -283,7 +299,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
           </section>}
 
           {canReconcile && <section className="advx-section advx-form">
-            <h3>{settlement.kind === 'return' ? 'Record returned cash' : settlement.kind === 'reimburse' ? 'Pay reimbursement' : 'Close advance'}</h3>
+            <h3>{settlement.kind === 'return' ? 'Record returned cash' : settlement.kind === 'reimburse' ? 'Pay reimbursement' : `Close ${noun}`}</h3>
             <div className="advx-form-grid">
               <label>Date<input type="date" value={finance.date} onChange={e => setFinance({ ...finance, date: e.target.value })} /></label>
               <label>Method<select value={finance.method} onChange={e => setFinance({ ...finance, method: e.target.value })}><option>Cash</option><option>Bank transfer</option><option>Cheque</option></select></label>
@@ -301,30 +317,32 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
 
       <footer className="advx-foot">
         <button className="advx-btn" onClick={onClose} disabled={busy}>Close</button>
+        {canCancel && <button className="advx-btn danger" disabled={busy} onClick={cancelClaim}><Trash2 size={16} />Cancel claim</button>}
         {canRecord && <button className="advx-btn primary" disabled={busy || formDirty || !drafts.length || waiting.length > 0} title={waiting.length ? 'Some expenses are still on this device. Upload them first.' : formDirty ? 'Save or clear the expense you are typing first' : drafts.length ? '' : 'Save at least one expense first'} onClick={submitSettlement}><Send size={16} />Submit to manager{drafts.length ? ` (${drafts.length})` : ''}</button>}
         {canReview && <><button className="advx-btn" disabled={busy} onClick={() => decide('return')}><CornerUpLeft size={16} />Return to staff</button><button className="advx-btn primary" disabled={busy} onClick={() => decide('approve')}><Check size={16} />Approve settlement</button></>}
-        {canReconcile && <button className="advx-btn primary" disabled={busy} onClick={reconcile}><Check size={16} />{settlement.kind === 'return' ? `Record ${money(settlement.value)} returned & close` : settlement.kind === 'reimburse' ? `Pay ${money(settlement.value)} & close` : 'Close advance'}</button>}
+        {canReconcile && <button className="advx-btn primary" disabled={busy} onClick={reconcile}><Check size={16} />{settlement.kind === 'return' ? `Record ${money(settlement.value)} returned & close` : settlement.kind === 'reimburse' ? `Pay ${money(settlement.value)} & close` : `Close ${noun}`}</button>}
       </footer>
     </section>
   </div>;
 }
 
 function closedText(advance) {
+  if (lower(advance.status) === 'cancelled') return 'Cancelled';
   if (num(advance.returned_amount) > 0) return `${money(advance.returned_amount)} returned`;
   if (num(advance.reimbursed_amount) > 0) return `${money(advance.reimbursed_amount)} reimbursed`;
   return 'Fully settled';
 }
 
 // One short line: what happens next, for this viewer.
-function nextStep(stage, { isAdmin, isFinance, readOnly, hasDrafts, reviewNote }) {
+function nextStep(stage, { isAdmin, isFinance, readOnly, hasDrafts, reviewNote, isClaim }) {
   const staff = !readOnly;
   if (stage === 0) return { tone: 'wait', text: isAdmin ? 'Waiting for approval. Approve it from the advances list.' : 'Waiting for manager approval.' };
   if (stage === 1) return { tone: 'wait', text: isFinance ? 'Approved. Release the money from the advances list.' : 'Approved. Waiting for finance to release the money.' };
   if (stage === 3) {
     if (reviewNote) return { tone: 'alert', text: `Returned by the manager: ${reviewNote}` };
-    return { tone: 'go', text: staff ? (hasDrafts ? 'Add more expenses, or press Submit to manager when you are done.' : 'Add each expense and press Save draft.') : 'Staff is recording expenses.' };
+    return { tone: 'go', text: staff ? (hasDrafts ? 'Add more expenses, or press Submit to manager when you are done.' : isClaim ? 'Add each expense you paid, with its receipt, and press Save draft.' : 'Add each expense and press Save draft.') : 'Staff is recording expenses.' };
   }
   if (stage === 4) return { tone: 'wait', text: isAdmin ? 'Approve or reject each expense, then approve the settlement.' : staff ? 'Submitted. The manager is reviewing it.' : 'The manager is reviewing the settlement.' };
-  if (stage === 5) return { tone: 'wait', text: isFinance ? 'Approved. Settle the balance below to close.' : 'Approved. Finance will settle the balance with you.' };
+  if (stage === 5) return { tone: 'wait', text: isFinance ? (isClaim ? 'Approved. Pay the staff member below to close.' : 'Approved. Settle the balance below to close.') : (isClaim ? 'Approved. Finance will pay you.' : 'Approved. Finance will settle the balance with you.') };
   return { tone: 'done', text: 'Closed.' };
 }

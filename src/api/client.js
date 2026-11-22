@@ -174,8 +174,8 @@ const PRINT_COLUMNS = {
   'cash-claims': ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   expenses: ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   'my-expense-claims': ['voucher', 'category', 'job_order', 'date', 'amount', 'status', 'description'],
-  advances: ['advance', 'staff_name', 'issued', 'job_order', 'purpose', 'amount', 'claimed', 'balance', 'status'],
-  'my-advances': ['advance', 'job_order', 'issued', 'purpose', 'amount', 'claimed', 'balance', 'status'],
+  advances: ['advance', 'type', 'staff_name', 'issued', 'job_order', 'purpose', 'amount', 'claimed', 'balance', 'status'],
+  'my-advances': ['advance', 'type', 'job_order', 'issued', 'purpose', 'amount', 'claimed', 'balance', 'status'],
   'cash-entries': ['number', 'type', 'date', 'account', 'counterparty', 'job_order', 'amount', 'method', 'status', 'description'],
   staff: ['staff_member', 'employee_id', 'designation', 'phone', 'email', 'active_jobs', 'status'],
   salary: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
@@ -600,6 +600,7 @@ async function workflowRoute(resource, id, action, payload) {
   }
 
   if (resource === 'advances') {
+    if (action === 'cancel-claim') return rpc('cancel_expense_claim', { p_advance: id });
     if (action === 'issue') return rpc('issue_advance', { p_advance: id, p_payload: payload || {} });
     if (action === 'claim') return rpc('claim_advance', { p_advance: id, p_payload: payload || {} });
     if (action === 'draft') return rpc('save_advance_draft', { p_advance: id, p_payload: payload || {} });
@@ -687,6 +688,8 @@ export async function apiRequest(path, options = {}) {
 
   // Daily advance reminders (safe to repeat: at most one reminder per advance per day).
   if (method === 'POST' && resource === 'advances' && id === 'reminders' && !action) return rpc('send_advance_reminders');
+  // Expense claim (staff paid with their own money): an advance of kind 'Claim'.
+  if (method === 'POST' && resource === 'advance-claims' && !id) return rpc('open_expense_claim', { p_payload: payload || {} });
   if (method === 'POST' && resource === 'notifications' && id === 'send' && !action) return sendNotification(payload);
   if (method === 'POST' && resource === 'alerts' && id === 'daily' && !action) { const sent = await rpc('send_daily_alerts'); if (sent) deliverMessages(); return sent; }
   if (method === 'PUT' && resource === 'alerts' && id === 'preferences') return saveAlertPreferences(payload);

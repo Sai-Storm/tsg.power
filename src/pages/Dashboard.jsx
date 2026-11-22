@@ -32,6 +32,7 @@ const STAFF_ACTIONS = [
   ['New service report', ClipboardCheck, '/service-reports', true],
   ['Request material', PackageCheck, '/material-requests', true],
   ['Request advance', Wallet, '/my-advances', true],
+  ['Claim expenses', ReceiptText, '/my-advances', 'my-claim'],
 ];
 const FINANCE_ACTIONS = [
   ['Staff advances', Wallet, '/advances'],
@@ -94,7 +95,7 @@ export default function Dashboard({ user }) {
           <div className="panel-heading"><div><h2>Quick actions</h2><p>Common tasks</p></div></div>
           <div className="quick-links">
             {actions.map(([label, Icon, target, openCreate]) => (
-              <Link to={target} state={openCreate ? { openCreate: true, form: target.replace(/^\//, '') } : undefined} key={label}>
+              <Link to={target} state={openCreate ? { openCreate: true, form: typeof openCreate === 'string' ? openCreate : target.replace(/^\//, '') } : undefined} key={label}>
                 <span className="quick-icon"><Icon size={18} /></span><span>{label}</span><ArrowRight size={15} className="quick-arrow" />
               </Link>
             ))}

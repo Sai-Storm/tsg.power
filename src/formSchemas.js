@@ -324,6 +324,11 @@ export const formSchemas = {
     money('amount', 'Requested amount', true),
     area('purpose', 'Business purpose', true),
   ],
+  'my-claim': [
+    section('Expense claim'),
+    lookup('job_id', 'Job order (leave empty for office expenses)', 'jobs'),
+    area('purpose', 'What is this claim for?', true, { placeholder: 'e.g. Site visit to Mandalay, office supplies for November' }),
+  ],
   'my-advance': [
     section('Advance request'),
     lookup('job_id', 'Job order', 'jobs', true),
