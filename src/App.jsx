@@ -212,6 +212,7 @@ export default function App() {
             <Route path="/advance-overview" element={financeOnly(<AdvanceOverview />)} />
             <Route path="/receivables" element={financeOnly(<Receivables notify={notify} />)} />
             <Route path="/purchasing" element={financeOnly(<Purchasing notify={notify} />)} />
+            <Route path="/my-expense-claims" element={<Navigate to="/my-advances" replace />} />
             <Route path="/management-report" element={financeOnly(<ManagementReport />)} />
             <Route path="*" element={<ModuleRoute user={user} notify={notify} />} />
           </Routes>

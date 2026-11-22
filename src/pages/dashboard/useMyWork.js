@@ -1,4 +1,4 @@
-// An employee's own numbers: assigned jobs, today's schedule, pending claims
+// An employee's own numbers: assigned jobs, today's schedule
 // and open advance balance. Uses the dashboard summary when it has them and
 // counts from the lists otherwise (whichever is higher).
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +14,6 @@ export default function useMyWork(user, liveCounts, enabled) {
   const options = key => ({ queryKey: ['dashboard', key, user.id], enabled, staleTime: 20_000 });
   const staffQuery = useQuery({ ...options('my-staff'), queryFn: () => apiRequest('/staff?page=1&limit=500') });
   const jobsQuery = useQuery({ ...options('my-jobs'), queryFn: () => apiRequest('/jobs?page=1&limit=5000') });
-  const claimsQuery = useQuery({ ...options('my-claims'), queryFn: () => apiRequest('/my-expense-claims?page=1&limit=5000') });
   const advancesQuery = useQuery({ ...options('my-advances'), queryFn: () => apiRequest('/my-advances?page=1&limit=5000') });
   if (!enabled) return null;
 
@@ -37,9 +36,6 @@ export default function useMyWork(user, liveCounts, enabled) {
   const openJobs = lookupRecords('jobs', jobsQuery.data).filter(record => isMine(record) && !isClosedJob(record));
   const today = todayIso();
   const todayJobs = openJobs.filter(record => String(record?.planned_start_date || record?.job_date || '').slice(0, 10) === today);
-  const pendingClaims = lookupRecords('expenses', claimsQuery.data)
-    .filter(record => /submitted|pending approval/i.test(String(record?.status || '')))
-    .reduce((sum, record) => sum + amountNumber(record?.amount_value ?? record?.amount), 0);
   const openAdvance = lookupRecords('advances', advancesQuery.data)
     .filter(record => /issued|partially settled|under review|settlement approved/i.test(String(record?.status || '')))
     .reduce((sum, record) => sum + amountNumber(record?.balance), 0);
@@ -48,7 +44,6 @@ export default function useMyWork(user, liveCounts, enabled) {
   return {
     assignedJobs: metric(['myAssignedJobs', 'assignedJobs', 'assigned_jobs'], openJobs.length),
     todaysJobs: metric(['todaysScheduledJobs', 'scheduledToday', 'scheduled_today'], todayJobs.length),
-    pendingClaims: metric(['myPendingClaims', 'pendingClaims', 'pending_claims'], pendingClaims),
     openAdvanceBalance: metric(['myOpenAdvanceBalance', 'openAdvanceBalance', 'advance_balance'], openAdvance),
   };
 }

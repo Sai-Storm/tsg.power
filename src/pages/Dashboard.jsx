@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../api/client.js';
 import { moduleInfo } from '../data.js';
-import { apiEndpoint, normalizeList } from '../lib/records.js';
+import { normalizeList } from '../lib/records.js';
 import { isAdminRole, isEmployeeRole } from '../lib/roles.js';
 import { formatDelta, moneyText, resolveDashboardMetric } from './dashboard/metrics.js';
 import useMyWork from './dashboard/useMyWork.js';
@@ -31,7 +31,6 @@ const STAFF_ACTIONS = [
   ['New invoice', ReceiptText, '/invoices', true],
   ['New service report', ClipboardCheck, '/service-reports', true],
   ['Request material', PackageCheck, '/material-requests', true],
-  ['Submit expense claim', ReceiptText, '/my-expense-claims', true],
   ['Request advance', Wallet, '/my-advances', true],
 ];
 const FINANCE_ACTIONS = [
@@ -47,9 +46,8 @@ export default function Dashboard({ user }) {
   const dashboardQuery = useQuery({ queryKey: ['dashboard', user.role], queryFn: () => apiRequest('/dashboard'), staleTime: 30_000 });
   const dashboardData = dashboardQuery.data?.data || dashboardQuery.data || {};
   const liveCounts = dashboardData.counts || dashboardData.stats || dashboardData;
-  const cashModule = isAdmin ? 'cash-claims' : 'my-expense-claims';
-  const cashQuery = useQuery({ queryKey: ['dashboard-cash', user.role], queryFn: () => apiRequest(`/${isAdmin ? 'cash-claims' : apiEndpoint('my-expense-claims')}?page=1&limit=5`), staleTime: 20_000 });
-  const cashRows = normalizeList(cashQuery.data, moduleInfo[cashModule].columns);
+  const cashQuery = useQuery({ queryKey: ['dashboard-cash', user.role], queryFn: () => apiRequest('/cash-claims?page=1&limit=5'), enabled: isAdmin, staleTime: 20_000 });
+  const cashRows = normalizeList(cashQuery.data, moduleInfo['cash-claims'].columns);
   const mine = useMyWork(user, liveCounts, isEmployee);
   const metric = keys => resolveDashboardMetric(liveCounts, keys);
   const outstandingAmount = metric(['outstandingPayments', 'unpaidInvoices', 'unpaidInvoiceTotal', 'invoices.unpaidTotal']);
@@ -62,7 +60,6 @@ export default function Dashboard({ user }) {
   ] : [
     { label: 'My assigned jobs', value: mine?.assignedJobs ?? 0, target: '/jobs', icon: BriefcaseBusiness, color: 'blue' },
     { label: "Today's schedule", value: mine?.todaysJobs ?? 0, target: '/jobs', icon: ClipboardCheck, color: 'violet' },
-    { label: 'Pending claims', value: mine?.pendingClaims ?? 0, target: '/my-expense-claims', icon: ReceiptText, color: 'amber' },
     { label: 'Open advance balance', value: mine?.openAdvanceBalance ?? 0, target: '/my-advances', icon: Wallet, color: 'green' },
     { label: 'Pending quotations', value: metric(['pendingQuotations', 'pending_quotations', 'quotations.pending']) ?? '—', target: '/quotations', icon: FileText, color: 'teal' },
   ];
@@ -121,7 +118,7 @@ export default function Dashboard({ user }) {
           </div>
           <div className="pending-links">
             {!isAdmin && <Link to="/quotations"><FileText size={17} /><span>Quotations</span><b>{metric(['pendingQuotations', 'pending_quotations']) ?? '—'}</b><ArrowRight size={14} /></Link>}
-            <Link to={isAdmin ? '/cash-claims' : '/my-expense-claims'}><ReceiptText size={17} /><span>Expense claims</span><b>{metric(['pendingExpenseClaims', 'pending_expense_claims']) ?? '—'}</b><ArrowRight size={14} /></Link>
+            {isAdmin && <Link to="/cash-claims"><ReceiptText size={17} /><span>Expense claims</span><b>{metric(['pendingExpenseClaims', 'pending_expense_claims']) ?? '—'}</b><ArrowRight size={14} /></Link>}
             <Link to="/material-requests"><PackageCheck size={17} /><span>Material requests</span><b>{metric(['pendingMaterialRequests', 'pending_material_requests']) ?? '—'}</b><ArrowRight size={14} /></Link>
           </div>
         </section>

@@ -21,7 +21,6 @@ export const navigation = [
   { label: 'Advance overview', path: '/advance-overview', icon: Gauge, roles: ['Admin', 'Finance'] },
   { label: 'Receivables', path: '/receivables', icon: HandCoins, roles: ['Admin', 'Finance'] },
   { label: 'Purchasing', path: '/purchasing', icon: ShoppingCart, roles: ['Admin', 'Finance'] },
-  { label: 'My expense claims', path: '/my-expense-claims', icon: ReceiptText, roles: ['Finance', 'Staff'] },
   { label: 'My advances', path: '/my-advances', icon: CircleDollarSign, roles: ['Finance', 'Staff'] },
   { label: 'Fixed assets', path: '/fixed-assets', icon: Building2, roles: ['Admin'] },
   { label: 'Recycle bin', path: '/recycle-bin', icon: PackageCheck, roles: ['Admin'] },
