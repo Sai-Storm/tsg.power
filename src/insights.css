@@ -80,7 +80,8 @@ html[data-theme="dark"] .ins-stage-num{color:#0b1a29}
 .ins-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 .ins-two .ins-panel{margin-top:16px}
 .ins-bars{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
-.ins-bars li{display:grid;grid-template-columns:minmax(110px,1fr) 2fr auto;align-items:center;gap:10px}
+.ins-bars li{display:grid;grid-template-columns:minmax(110px,1fr) 2fr minmax(140px,auto);align-items:center;gap:10px}
+.ins-bars .value{text-align:right}
 .ins-bars .name{display:flex;flex-direction:column;font-weight:700}
 .ins-bars .name small{font-weight:500;color:var(--in-muted)}
 .ins-bars .track{height:12px;border-radius:999px;background:var(--in-soft);overflow:hidden}
@@ -93,8 +94,13 @@ html[data-theme="dark"] .ins-stage-num{color:#0b1a29}
 .ins-list .right{text-align:right}
 .ins-tag{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--in-blue-bg);color:var(--in-blue);font-size:12.5px;font-weight:800}
 
+/* Buttons inside a table row stay on one line; ids never break. */
+.ins-table .ins-actions{flex-wrap:nowrap;justify-content:flex-end}
+.ins-table td b.ins-id,.ins-table td .ins-id{white-space:nowrap}
+
 @media (max-width:720px){
   .ins-panel{padding:12px}
+  .ins-table .ins-actions{flex-wrap:wrap;justify-content:flex-start}
   .ins-table thead{display:none}
   .ins-table tr{display:block;border-bottom:1px solid var(--in-line);padding:6px 0}
   .ins-table td{display:flex;justify-content:space-between;gap:12px;border:0;padding:6px 12px;text-align:right}

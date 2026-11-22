@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Camera, Check, CornerUpLeft, Paperclip, Pencil, Save, Send, Trash2, X } from 'lucide-react';
+import { Briefcase, Camera, Check, CloudOff, CornerUpLeft, Paperclip, Pencil, Save, Send, Trash2, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { ReceiptLink, looksLikeFile } from './Attachments.jsx';
 import { confirmDialog, promptDialog } from './components/AskDialog.jsx';
+import { flushOfflineDrafts, isOfflineError, offlineDrafts, onOfflineDraftsChanged, removeOfflineDraft, saveOfflineDraft } from './lib/offlineDrafts.js';
 import './advance.css';
 
 // One window for the whole life of a staff advance, always tied to its job order:
@@ -27,7 +28,7 @@ const stageOf = status => ({ 'pending approval': 0, approved: 1, issued: 3, open
 const stageLabel = status => (isOpen(status) ? 'In progress' : status || '—');
 const receiptsOf = entry => (Array.isArray(entry.receipt_files) && entry.receipt_files.length ? entry.receipt_files : entry.receipt_file ? [entry.receipt_file] : []);
 
-export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, onClose, onChanged }) {
+export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinance = isAdmin, notify, onClose, onChanged }) {
   const advanceId = row?._id || row?.[0];
   const query = useQuery({
     queryKey: ['advance-expenses', advanceId],
@@ -44,6 +45,17 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, 
   const [finance, setFinance] = useState({ date: todayKey(), method: 'Cash', reference: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [waiting, setWaiting] = useState([]); // expenses saved offline on this device
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => offlineDrafts(advanceId).then(list => { if (alive) setWaiting(list); });
+    const uploaded = () => { load(); query.refetch(); };
+    load();
+    const stop = onOfflineDraftsChanged(load);
+    window.addEventListener('tsg-offline-uploaded', uploaded);
+    return () => { alive = false; stop(); window.removeEventListener('tsg-offline-uploaded', uploaded); };
+  }, [advanceId]);
 
   const amount = num(advance?.amount);
   const draftTotal = num(advance?.drafts);
@@ -53,7 +65,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, 
   const stage = stageOf(status);
   const canRecord = !readOnly && Boolean(advance?.can_record);
   const canReview = Boolean(isAdmin && advance?.can_review);
-  const canReconcile = Boolean(isAdmin && advance?.can_reconcile);
+  const canReconcile = Boolean(isFinance && advance?.can_reconcile);
   const jobNumber = advance?.job_number && advance.job_number !== '—' ? advance.job_number : '';
   const missingReceipts = drafts.filter(d => !receiptsOf(d).length).length;
   const editingAmount = form?.id ? num(drafts.find(d => String(d.id) === form.id)?.amount) : 0;
@@ -83,16 +95,36 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, 
     const value = num(form.amount);
     if (!form.description.trim()) { setError('Write what the money was spent on.'); return; }
     if (value <= 0) { setError('Enter the amount spent.'); return; }
+    const fields = { date: form.date, category: form.category, supplier_name: form.supplier_name.trim(), description: form.description.trim(), amount: String(value), notes: form.notes.trim() };
+    const keepOnDevice = async () => {
+      await saveOfflineDraft(advanceId, fields, form.newFiles);
+      setForm({ ...emptyForm(), date: form.date, category: form.category });
+      setError('');
+      notify?.('No connection. The expense is saved on this device and will upload automatically.');
+    };
+    // New expenses can be saved without a connection; edits need one.
+    if (!form.id && typeof navigator !== 'undefined' && navigator.onLine === false) { await keepOnDevice(); return; }
+    let offline = false;
     const ok = await run(async () => {
       const body = new FormData();
       if (form.id) body.append('id', form.id);
-      body.append('date', form.date); body.append('category', form.category); body.append('supplier_name', form.supplier_name.trim());
-      body.append('description', form.description.trim()); body.append('amount', String(value)); body.append('notes', form.notes.trim());
+      Object.entries(fields).forEach(([key, val]) => body.append(key, val));
       form.newFiles.forEach(file => body.append('receipt_files', file));
       if (form.removeFiles.length) body.append('remove_receipts', JSON.stringify(form.removeFiles));
-      await apiRequest(`/advances/${encodeURIComponent(advanceId)}/draft`, { method: 'POST', body });
+      try {
+        await apiRequest(`/advances/${encodeURIComponent(advanceId)}/draft`, { method: 'POST', body });
+      } catch (e) {
+        if (!form.id && isOfflineError(e)) { offline = true; return; }
+        throw e;
+      }
     }, form.id ? 'Expense updated.' : 'Expense saved as draft.');
+    if (offline) { await keepOnDevice(); return; }
     if (ok) setForm({ ...emptyForm(), date: form.date, category: form.category });
+  };
+
+  const discardWaiting = async item => {
+    if (!await confirmDialog(`Delete "${item.fields?.description}" saved on this device? It has not been uploaded.`, { title: 'Delete expense', confirmLabel: 'Delete', tone: 'danger' })) return;
+    await removeOfflineDraft(item.key);
   };
 
   const deleteDraft = async entry => {
@@ -145,7 +177,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, 
   const addFiles = event => { const picked = Array.from(event.target.files || []); setForm(old => ({ ...old, newFiles: [...old.newFiles, ...picked] })); };
   const showActions = canRecord || canReview;
   const formDirty = Boolean(form.id || form.description.trim() || String(form.amount).trim());
-  const next = nextStep(stage, { isAdmin, readOnly, hasDrafts: drafts.length > 0, reviewNote: advance?.review_note });
+  const next = nextStep(stage, { isAdmin, isFinance, readOnly, hasDrafts: drafts.length > 0, reviewNote: advance?.review_note });
   const fileInputKey = `${form.id || 'new'}-${entries.length}`;
   const formFiles = form.existingFiles.length - form.removeFiles.length + form.newFiles.length;
   const balanceLabel = stage >= 6 ? 'Result' : settlement.kind === 'return' ? 'To return' : settlement.kind === 'reimburse' ? 'To reimburse' : 'Balance';
@@ -179,8 +211,22 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, 
 
           <section className="advx-section">
             <h3>Expenses <small>{entries.length}</small></h3>
-            {!entries.length && <p className="advx-empty">No expenses yet.{canRecord ? ' Add one below.' : ''}</p>}
+            {!entries.length && !waiting.length && <p className="advx-empty">No expenses yet.{canRecord ? ' Add one below.' : ''}</p>}
             <ul className="advx-list">
+              {waiting.map(item => <li key={`offline-${item.key}`} className="is-draft is-offline">
+                <div className="advx-item-main">
+                  <div className="advx-item-top"><b>{item.fields?.description}</b><span className="advx-status advx-status-offline"><CloudOff size={13} />{item.error ? 'Not uploaded' : 'Waiting to upload'}</span></div>
+                  <div className="advx-item-meta"><span>{[shortDate(item.fields?.date), item.fields?.category].filter(Boolean).join(' · ')}</span><span>{item.files?.length ? `${item.files.length} receipt${item.files.length === 1 ? '' : 's'} on this device` : <span className="advx-missing">No receipt</span>}</span></div>
+                  {item.error && <div className="advx-item-reason">{item.error}</div>}
+                </div>
+                <div className="advx-item-side">
+                  <b className="advx-item-amount">{money(item.fields?.amount)}</b>
+                  <div className="advx-item-actions">
+                    <button className="advx-btn small" disabled={busy} onClick={() => flushOfflineDrafts().then(() => offlineDrafts(advanceId).then(setWaiting))}>Retry</button>
+                    <button className="advx-btn small danger" disabled={busy} onClick={() => discardWaiting(item)} aria-label="Delete expense" title="Delete"><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              </li>)}
               {entries.map(entry => {
                 const draft = isDraft(entry);
                 const reviewable = ['submitted', 'approved', 'rejected'].includes(lower(entry.status));
@@ -255,7 +301,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, notify, 
 
       <footer className="advx-foot">
         <button className="advx-btn" onClick={onClose} disabled={busy}>Close</button>
-        {canRecord && <button className="advx-btn primary" disabled={busy || formDirty || !drafts.length} title={formDirty ? 'Save or clear the expense you are typing first' : drafts.length ? '' : 'Save at least one expense first'} onClick={submitSettlement}><Send size={16} />Submit to manager{drafts.length ? ` (${drafts.length})` : ''}</button>}
+        {canRecord && <button className="advx-btn primary" disabled={busy || formDirty || !drafts.length || waiting.length > 0} title={waiting.length ? 'Some expenses are still on this device. Upload them first.' : formDirty ? 'Save or clear the expense you are typing first' : drafts.length ? '' : 'Save at least one expense first'} onClick={submitSettlement}><Send size={16} />Submit to manager{drafts.length ? ` (${drafts.length})` : ''}</button>}
         {canReview && <><button className="advx-btn" disabled={busy} onClick={() => decide('return')}><CornerUpLeft size={16} />Return to staff</button><button className="advx-btn primary" disabled={busy} onClick={() => decide('approve')}><Check size={16} />Approve settlement</button></>}
         {canReconcile && <button className="advx-btn primary" disabled={busy} onClick={reconcile}><Check size={16} />{settlement.kind === 'return' ? `Record ${money(settlement.value)} returned & close` : settlement.kind === 'reimburse' ? `Pay ${money(settlement.value)} & close` : 'Close advance'}</button>}
       </footer>
@@ -270,15 +316,15 @@ function closedText(advance) {
 }
 
 // One short line: what happens next, for this viewer.
-function nextStep(stage, { isAdmin, readOnly, hasDrafts, reviewNote }) {
-  const staff = !readOnly && !isAdmin;
+function nextStep(stage, { isAdmin, isFinance, readOnly, hasDrafts, reviewNote }) {
+  const staff = !readOnly;
   if (stage === 0) return { tone: 'wait', text: isAdmin ? 'Waiting for approval. Approve it from the advances list.' : 'Waiting for manager approval.' };
-  if (stage === 1) return { tone: 'wait', text: isAdmin ? 'Approved. Release the money from the advances list.' : 'Approved. Waiting for finance to release the money.' };
+  if (stage === 1) return { tone: 'wait', text: isFinance ? 'Approved. Release the money from the advances list.' : 'Approved. Waiting for finance to release the money.' };
   if (stage === 3) {
     if (reviewNote) return { tone: 'alert', text: `Returned by the manager: ${reviewNote}` };
     return { tone: 'go', text: staff ? (hasDrafts ? 'Add more expenses, or press Submit to manager when you are done.' : 'Add each expense and press Save draft.') : 'Staff is recording expenses.' };
   }
-  if (stage === 4) return { tone: 'wait', text: isAdmin ? 'Approve or reject each expense, then approve the settlement.' : 'Submitted. The manager is reviewing it.' };
-  if (stage === 5) return { tone: 'wait', text: isAdmin ? 'Approved. Settle the balance below to close.' : 'Approved. Finance will settle the balance with you.' };
+  if (stage === 4) return { tone: 'wait', text: isAdmin ? 'Approve or reject each expense, then approve the settlement.' : staff ? 'Submitted. The manager is reviewing it.' : 'The manager is reviewing the settlement.' };
+  if (stage === 5) return { tone: 'wait', text: isFinance ? 'Approved. Settle the balance below to close.' : 'Approved. Finance will settle the balance with you.' };
   return { tone: 'done', text: 'Closed.' };
 }

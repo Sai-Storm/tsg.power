@@ -1,4 +1,5 @@
 import { supabase, requireSupabase } from './supabase.js';
+import { normalizeRole } from '../lib/roles.js';
 
 export function toAppUser(profile, authUser) {
   const metadata = authUser?.user_metadata || {};
@@ -8,7 +9,7 @@ export function toAppUser(profile, authUser) {
     id: profile?.id || authUser?.id,
     name: profile?.name || fallbackName,
     username: profile?.username || email.split('@')[0] || 'user',
-    role: String(profile?.role || 'Staff').toLowerCase() === 'admin' ? 'Admin' : 'Staff',
+    role: normalizeRole(profile?.role),
     avatar: profile?.avatar || metadata.avatar_url || '',
     email,
     phone: profile?.phone || '',

@@ -122,11 +122,9 @@ Deno.serve(async (req) => {
       const requestedRole = String(body.role ?? 'Staff');
 
       const role =
-        requestedRole.toLowerCase() === 'admin'
-          ? 'Admin'
-          : requestedRole.toLowerCase() === 'staff'
-            ? 'Staff'
-            : null;
+        ({ admin: 'Admin', finance: 'Finance', staff: 'Staff' } as Record<string, string>)[
+          requestedRole.toLowerCase()
+        ] ?? null;
 
       const avatar = body.avatar
         ? String(body.avatar)
@@ -363,11 +361,9 @@ Deno.serve(async (req) => {
       const requestedRole = String(body.role ?? '');
 
       const role =
-        requestedRole.toLowerCase() === 'admin'
-          ? 'Admin'
-          : requestedRole.toLowerCase() === 'staff'
-            ? 'Staff'
-            : null;
+        ({ admin: 'Admin', finance: 'Finance', staff: 'Staff' } as Record<string, string>)[
+          requestedRole.toLowerCase()
+        ] ?? null;
 
       if (!userId) {
         return json({ error: 'user_id is required' }, 400);
@@ -387,7 +383,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      if (role === 'Staff') {
+      if (role !== 'Admin') {
         const { data: target } = await admin
           .from('profiles')
           .select('id, role, is_active')

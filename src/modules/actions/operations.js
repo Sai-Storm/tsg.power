@@ -16,3 +16,6 @@ export function materialRequestActions(row, columns, role) {
   if (status === 'issued') return adminOnly(role, [{ label: 'Record return', action: 'return-materials' }]);
   return [];
 }
+
+// A machine due for service becomes a draft job order in one click.
+export const machineActions = (_row, _columns, role) => (role === 'Admin' ? [{ label: 'Create service job order', action: 'machine-job' }] : []);

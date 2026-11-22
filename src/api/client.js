@@ -26,6 +26,7 @@ const READ_VIEW = {
   accounts: 'v_profiles',
   users: 'v_profiles',
   notifications: 'v_notifications',
+  'purchase-requests': 'v_purchase_requests',
   settings: 'v_settings',
   'recycle-bin': 'v_recycle_bin',
 };
@@ -334,6 +335,33 @@ async function currentUserId() {
 
 // Admin message to staff: one notification row per recipient.
 //   audience: 'staff' (all active staff) | 'everyone' (all active users) | 'people' (recipients: [profile id])
+// Sends queued email / Telegram alerts now (the database also schedules it).
+// Never blocks the caller: a missing or unconfigured function is ignored.
+export function deliverMessages() {
+  if (!supabase) return Promise.resolve(null);
+  return supabase.functions.invoke('deliver-messages', { body: {} }).then(result => result.data).catch(() => null);
+}
+
+async function saveAlertPreferences(payload = {}) {
+  const me = await currentUserId();
+  if (!me) throw new Error('Sign in again to save alert settings.');
+  const chat = String(payload.telegram_chat_id ?? '').trim();
+  if (chat && !/^-?\d{4,20}$/.test(chat)) throw new Error('A Telegram chat ID is a number, e.g. 123456789.');
+  const { data, error } = await supabase.from('profiles')
+    .update({ email_alerts: Boolean(payload.email_alerts), telegram_chat_id: chat || null })
+    .eq('id', me).select('email_alerts, telegram_chat_id').single();
+  if (error) throw new Error(errorMessage(error));
+  return data;
+}
+
+async function alertPreferences() {
+  const me = await currentUserId();
+  if (!me) return { email_alerts: false, telegram_chat_id: '' };
+  const { data, error } = await supabase.from('profiles').select('email, email_alerts, telegram_chat_id').eq('id', me).single();
+  if (error) throw new Error(errorMessage(error));
+  return data;
+}
+
 async function sendNotification(payload = {}) {
   const title = String(payload.title || '').trim();
   if (!title) throw new Error('Write a title for the notification.');
@@ -352,6 +380,7 @@ async function sendNotification(payload = {}) {
   const related = String(payload.related_to || '').trim() || 'Message from admin';
   const { error } = await supabase.from('notifications').insert(ids.map(user_id => ({ user_id, title, details, related_to: related })));
   if (error) throw new Error(errorMessage(error));
+  deliverMessages();
   return { sent: ids.length };
 }
 
@@ -629,6 +658,18 @@ export async function apiRequest(path, options = {}) {
     if (resource === 'advances' && id && action === 'expenses') return rpc('advance_expenses', { p_advance: id });
     if (resource === 'job-profitability') return rpc('job_profitability', { p_from: params.get('from') || null, p_to: params.get('to') || null });
     if (resource === 'advance-overview') return rpc('advance_overview');
+    if (resource === 'schema-version') return rpc('schema_version');
+    if (resource === 'low-stock') return rpc('low_stock_items');
+    if (resource === 'receivables') return rpc('receivables_summary');
+    if (resource === 'customer-statement' && id) return rpc('customer_statement', { p_customer: id, p_from: params.get('from') || null, p_to: params.get('to') || null });
+    if (resource === 'management-report') return rpc('management_report', { p_month: `${params.get('month') || new Date().toISOString().slice(0, 7)}-01` });
+    if (resource === 'alerts' && id === 'preferences') return alertPreferences();
+    if (resource === 'unread-count') {
+      const me = await currentUserId();
+      const { count, error } = await supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', me).eq('is_read', false);
+      if (error) throw new Error(errorMessage(error));
+      return count || 0;
+    }
     if (id) return getResource(resource, id);
     return listResource(resource, params);
   }
@@ -647,6 +688,11 @@ export async function apiRequest(path, options = {}) {
   // Daily advance reminders (safe to repeat: at most one reminder per advance per day).
   if (method === 'POST' && resource === 'advances' && id === 'reminders' && !action) return rpc('send_advance_reminders');
   if (method === 'POST' && resource === 'notifications' && id === 'send' && !action) return sendNotification(payload);
+  if (method === 'POST' && resource === 'alerts' && id === 'daily' && !action) { const sent = await rpc('send_daily_alerts'); if (sent) deliverMessages(); return sent; }
+  if (method === 'PUT' && resource === 'alerts' && id === 'preferences') return saveAlertPreferences(payload);
+  if (method === 'POST' && resource === 'purchase-requests' && !id) return rpc('create_purchase_request', { p_item: payload?.item_id, p_quantity: Number(payload?.quantity) || null, p_note: payload?.note || null });
+  if (method === 'POST' && resource === 'purchase-requests' && action === 'status') return rpc('set_purchase_request_status', { p_request: id, p_status: payload?.status });
+  if (method === 'POST' && resource === 'customers' && action === 'remind') { const result = await rpc('send_invoice_reminder', { p_customer: id }); deliverMessages(); return result; }
 
   if (method === 'POST' && action) {
     const result = await workflowRoute(resource, id, action, payload);
@@ -738,13 +784,32 @@ async function printRows(rows, title, resource) {
   });
 }
 
+// Exports read the list in pages of 1,000 rows so the browser never asks the
+// database for everything at once, and stop at a limit: past it the user is
+// asked to narrow the date range instead of freezing the page.
+const EXPORT_PAGE = 1000;
+const PDF_EXPORT_LIMIT = 2000;
+const EXCEL_EXPORT_LIMIT = 20000;
+async function exportRows(resource, filters, limit) {
+  const first = await listResource(resource, new URLSearchParams({ page: '1', limit: String(EXPORT_PAGE), ...filters }));
+  const total = Number(first.total) || 0;
+  if (total > limit) {
+    throw new Error(`This export has ${total.toLocaleString('en-US')} records, more than the ${limit.toLocaleString('en-US')} allowed${limit === PDF_EXPORT_LIMIT ? ' in a PDF' : ''}. Use the Filters (date range or status) to narrow it down${limit === PDF_EXPORT_LIMIT ? ', or export to Excel' : ''}.`);
+  }
+  const rows = [...(first.items || [])];
+  for (let page = 2; rows.length < total; page += 1) {
+    const next = await listResource(resource, new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE), ...filters }));
+    if (!next.items?.length) break;
+    rows.push(...next.items);
+  }
+  return rows;
+}
+
 export async function exportModule(module, format, filters = {}) {
   requireSupabase();
   const reportId = String(module).startsWith('reports/') ? String(module).slice('reports/'.length) : null;
   const resource = reportId ? (REPORT_SOURCES[reportId] || 'jobs') : module;
-  const params = new URLSearchParams({ page: '1', limit: '5000', ...filters });
-  const result = await listResource(resource, params);
-  const rows = result.items || [];
+  const rows = await exportRows(resource, filters, format === 'pdf' ? PDF_EXPORT_LIMIT : EXCEL_EXPORT_LIMIT);
   if (format === 'pdf') {
     await printRows(rows, reportId ? reportId.replaceAll('-', ' ') : resource.replaceAll('-', ' '), resource);
     return;

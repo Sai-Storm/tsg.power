@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../api/client.js';
 import { initials } from '../lib/records.js';
+import AlertSettings from '../components/AlertSettings.jsx';
 
 export default function ProfilePage({ user, notify }) {
   const [name, setName] = useState(user.name || '');
@@ -173,6 +174,7 @@ export default function ProfilePage({ user, notify }) {
           </button>
         </div>
       </section>
+      <AlertSettings notify={notify} />
     </>
   );
 }

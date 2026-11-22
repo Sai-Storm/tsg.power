@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { ArrowRight, Bell, Check, ChevronRight, LogOut, Menu, Moon, Search, ShieldCheck, Sun, X } from 'lucide-react';
+import { ArrowRight, Bell, Check, ChevronRight, DatabaseZap, LogOut, Menu, Moon, Search, ShieldCheck, Sun, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { getCurrentUser, onAuthStateChange, signInWithGoogle, signInWithPassword, signOut as endSession } from './api/auth.js';
 import { isSupabaseConfigured } from './api/supabase.js';
@@ -9,6 +9,9 @@ import { AskHost } from './components/AskDialog.jsx';
 import Login, { LoginNotice } from './pages/Login.jsx';
 import { initials } from './lib/records.js';
 import { initialUser, oauthErrorFromUrl } from './lib/session.js';
+import { isAdminRole, isFinanceRole } from './lib/roles.js';
+import { useSchemaCheck, useUnreadCount } from './lib/useAppStatus.js';
+import { flushOfflineDrafts } from './lib/offlineDrafts.js';
 
 // App shell: sign-in, sidebar, top bar and routes. Each page is loaded only
 // when it is first opened, so the first visit downloads far less code.
@@ -19,9 +22,12 @@ const JobProfitability = lazy(() => import('./pages/JobProfitability.jsx'));
 const AdvanceOverview = lazy(() => import('./pages/AdvanceOverview.jsx'));
 const TeamSchedule = lazy(() => import('./TeamSchedule.jsx'));
 const CashBoard = lazy(() => import('./CashBoard.jsx'));
+const Receivables = lazy(() => import('./pages/Receivables.jsx'));
+const Purchasing = lazy(() => import('./pages/Purchasing.jsx'));
+const ManagementReport = lazy(() => import('./pages/ManagementReport.jsx'));
 const ModuleRoute = lazy(() => import('./modules/ModulePage.jsx'));
 
-const PAGE_TITLES = { '/reports': 'Reports', '/cash-board': 'Cash board', '/job-profitability': 'Job profitability', '/advance-overview': 'Advance overview' };
+const PAGE_TITLES = { '/reports': 'Reports', '/cash-board': 'Cash board', '/job-profitability': 'Job profitability', '/advance-overview': 'Advance overview', '/receivables': 'Receivables', '/purchasing': 'Purchasing', '/management-report': 'Management report' };
 
 function PageLoading() {
   return <div className="page-loading" role="status" aria-live="polite"><span className="loading-bar"><span /></span>Loading…</div>;
@@ -85,9 +91,23 @@ export default function App() {
       showLoginNotice('success', `Welcome back, ${user.name.split(' ')[0]}.`);
     }
   }, [user]);
-  // Daily advance reminders (also scheduled in the database when pg_cron is on).
-  // Each reminder is sent at most once a day, so calling this on login is safe.
-  useEffect(() => { if (user?.role === 'Admin') apiRequest('/advances/reminders', { method: 'POST' }).catch(() => {}); }, [user?.id]);
+  // Daily reminders and alerts (also scheduled in the database when pg_cron is
+  // on). Each one is sent at most once a day, so calling them on login is safe.
+  useEffect(() => {
+    if (!isFinanceRole(user?.role)) return;
+    apiRequest('/advances/reminders', { method: 'POST' }).catch(() => {});
+    apiRequest('/alerts/daily', { method: 'POST' }).catch(() => {});
+  }, [user?.id, user?.role]);
+  // Expenses saved on the phone while offline upload once the connection is back.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const sync = () => flushOfflineDrafts().then(count => { if (count) notify(`${count} expense${count === 1 ? '' : 's'} saved offline ${count === 1 ? 'was' : 'were'} uploaded.`); }).catch(() => {});
+    sync();
+    window.addEventListener('online', sync);
+    return () => window.removeEventListener('online', sync);
+  }, [user?.id]);
+  const unread = useUnreadCount(user);
+  const schemaProblem = useSchemaCheck(user);
   useEffect(() => {
     let active = true;
     const redirectError = oauthErrorFromUrl();
@@ -116,10 +136,12 @@ export default function App() {
     <AskHost />
   </>;
 
-  const isAdmin = user.role === 'Admin';
+  const isAdmin = isAdminRole(user.role);
+  const isFinance = isFinanceRole(user.role);
   const currentPage = navigation.find(item => item.path === location.pathname)?.label || PAGE_TITLES[location.pathname] || 'Dashboard';
   const matchingModules = navigation.filter(item => item.path && item.roles?.includes(user.role) && item.label.toLowerCase().includes(globalSearch.trim().toLowerCase())).slice(0, 6);
-  const adminOnly = element => (isAdmin ? element : <Navigate to="/" replace />);
+  const financeOnly = element => (isFinance ? element : <Navigate to="/" replace />);
+  const unreadLabel = unread > 99 ? '99+' : String(unread);
 
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
@@ -132,7 +154,7 @@ export default function App() {
         {navigation.filter(item => item.roles?.includes(user.role)).map((item, i) => (item.section
           ? <div className="nav-section" key={`${item.section}-${i}`}>{item.section}</div>
           : <NavLink key={item.path} to={item.path} end={item.path === '/'} onClick={() => setMenuOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.path === '/notifications' && <i className="nav-dot" />}
+            <item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.path === '/notifications' && unread > 0 && <i className="nav-count" aria-label={`${unread} unread`}>{unreadLabel}</i>}
           </NavLink>))}
       </nav>
       <div className="sidebar-bottom"><div className="sidebar-version">TSG Management System <span>v1.0.0</span></div></div>
@@ -158,7 +180,7 @@ export default function App() {
         </div>
         <div className="topbar-right">
           <div className="today-label"><span className="today-dot" />System operational</div>
-          <Link to="/notifications" className="top-icon" aria-label="Notifications"><Bell size={19} /><i /></Link>
+          <Link to="/notifications" className="top-icon" aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'}><Bell size={19} />{unread > 0 && <i className="top-count">{unreadLabel}</i>}</Link>
           <button className="top-icon theme-toggle" onClick={() => setTheme(current => (current === 'dark' ? 'light' : 'dark'))} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}>{theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}</button>
           <div className="top-divider" />
           <button className="profile-button" onClick={logout} title="Sign out">
@@ -170,15 +192,27 @@ export default function App() {
       </header>
 
       <div className="page-content">
+        {schemaProblem && <div className="schema-banner" role="alert">
+          <DatabaseZap size={20} />
+          <div>
+            <b>Database update needed</b>
+            {isAdmin
+              ? <span>The app was updated but the database was not (database version {schemaProblem.current}, needs {schemaProblem.required}). Run the newest files in <code>supabase/migrations</code> in the Supabase SQL Editor, then reload. Some pages will show errors until then.</span>
+              : <span>The system is being updated. Some pages may not work until an administrator finishes the update.</span>}
+          </div>
+        </div>}
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<Dashboard user={user} />} />
             <Route path="/profile" element={<ProfilePage user={user} notify={notify} />} />
             <Route path="/schedule" element={<TeamSchedule user={user} />} />
-            <Route path="/cash-board" element={adminOnly(<CashBoard user={user} notify={notify} />)} />
-            <Route path="/reports" element={adminOnly(<ReportsPage notify={notify} />)} />
-            <Route path="/job-profitability" element={adminOnly(<JobProfitability notify={notify} />)} />
-            <Route path="/advance-overview" element={adminOnly(<AdvanceOverview />)} />
+            <Route path="/cash-board" element={financeOnly(<CashBoard user={user} notify={notify} />)} />
+            <Route path="/reports" element={financeOnly(<ReportsPage notify={notify} />)} />
+            <Route path="/job-profitability" element={financeOnly(<JobProfitability notify={notify} />)} />
+            <Route path="/advance-overview" element={financeOnly(<AdvanceOverview />)} />
+            <Route path="/receivables" element={financeOnly(<Receivables notify={notify} />)} />
+            <Route path="/purchasing" element={financeOnly(<Purchasing notify={notify} />)} />
+            <Route path="/management-report" element={financeOnly(<ManagementReport />)} />
             <Route path="*" element={<ModuleRoute user={user} notify={notify} />} />
           </Routes>
         </Suspense>

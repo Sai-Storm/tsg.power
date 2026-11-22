@@ -163,3 +163,6 @@ p.advx-next{margin:0;font-size:15.5px;font-weight:600;color:var(--ax-text)}
 .advx-item-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:4px;font-size:14px}
 .advx-full{grid-column:1 / -1}
 @media (max-width:560px){.advx-tiles{grid-template-columns:1fr}.advx-tile{flex-direction:row;justify-content:space-between;align-items:baseline}}
+.advx-status-offline{display:inline-flex;align-items:center;gap:5px;background:var(--ax-amber-bg);color:var(--ax-amber);border-color:var(--ax-amber-line)}
+.advx-list li.is-offline{border-style:dashed}
+.advx-receipt-buttons label.advx-btn{flex-direction:row;align-items:center}

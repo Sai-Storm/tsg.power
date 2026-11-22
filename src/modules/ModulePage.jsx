@@ -20,6 +20,7 @@ import StaffProfileDialog from './dialogs/StaffProfileDialog.jsx';
 import StockMovementDialog from './dialogs/StockMovementDialog.jsx';
 import JobFinanceDialog from './dialogs/JobFinanceDialog.jsx';
 import SendNotificationDialog from './dialogs/SendNotificationDialog.jsx';
+import { isFinanceRole } from '../lib/roles.js';
 
 const PAGE_SIZE = 10;
 
@@ -87,10 +88,12 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   });
 
   const isAdmin = user.role === 'Admin';
-  const canCreate = isAdmin
+  // Finance works like Admin on the money pages (the database limits which steps).
+  const manages = isAdmin || (user.role === 'Finance' && ['advances', 'cash-claims', 'income'].includes(slug));
+  const canCreate = manages
     ? !['jobs', 'quotations', 'invoices', 'income', 'notifications', 'recycle-bin', 'settings'].includes(slug)
     : ['customers', 'quotations', 'invoices', 'jobs', 'service-reports', 'material-requests', 'my-expense-claims', 'my-advances'].includes(slug);
-  const canEdit = isAdmin
+  const canEdit = manages
     ? !['accounts', 'notifications', 'recycle-bin', 'income'].includes(slug)
     : ['customers', 'quotations', 'invoices', 'service-reports', 'material-requests', 'my-expense-claims'].includes(slug);
   const showDelete = isAdmin ? !['accounts', 'notifications', 'recycle-bin', 'settings', 'income'].includes(slug) : slug === 'customers';
@@ -103,7 +106,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   };
 
   const onExport = async format => {
-    if (format !== 'pdf' && !isAdmin) { notify('Excel export is available to admins only.'); return; }
+    if (format !== 'pdf' && !manages) { notify('Excel export is available to admin and finance only.'); return; }
     try { await exportModule(apiEndpoint(slug), format, activeFilters); } catch (e) { notify(e.message); }
   };
 
@@ -214,7 +217,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   };
 
   // Runs a row action from the "…" menu.
-  const workflow = async (row, action, nextStatus) => {
+  const workflow = async (row, action, nextStatus, details = {}) => {
     const open = type => setDialog({ type, row });
     const recordId = encodeURIComponent(row._id || row[0]);
     switch (action) {
@@ -251,6 +254,32 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
       case 'advance-expenses': return open('advance-expenses');
       case 'issue-advance': return open('advance-issue');
       case 'purge': return setDialog({ type: 'force', row, purge: true });
+      case 'machine-job': {
+        const machine = row._record || {};
+        const due = machine.next_service_date ? ` (service due ${String(machine.next_service_date).slice(0, 10)})` : '';
+        if (!await confirmDialog(`Create a draft service job order for ${row[0]}${due}?
+
+The customer, machine and site are filled in. Assign the team in Job orders.`, { title: 'Create service job', confirmLabel: 'Create job order' })) return;
+        try {
+          const job = await apiRequest('/jobs', { method: 'POST', body: JSON.stringify({
+            customer_id: machine.customer_id || null, machine_id: machine.id || row._id, site_location: machine.site_location || null,
+            title: `Scheduled service – ${machine.name || machine.machine || row[0]}`, job_type: 'Maintenance', priority: 'Normal', status: 'Draft',
+            job_date: new Date().toISOString().slice(0, 10), description: `Routine service${due}.`,
+          }) });
+          notify(`Job order ${job?.number || ''} created as a draft. Assign it in Job orders.`.replace('  ', ' '));
+        } catch (error) { notify(error.message); }
+        return;
+      }
+      case 'set-role':
+        if (!await confirmDialog(`Change ${row[0]} to ${details.role}?
+
+${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance: 'Finance can release money, pay claims, settle advances and see cash, invoices and reports, but cannot approve.', Staff: 'Staff see only their own work.' }[details.role] || ''}`, { title: 'Change role', confirmLabel: `Make ${details.role}` })) return;
+        try {
+          await apiRequest(`/users/${recordId}`, { method: 'PUT', body: JSON.stringify({ role: details.role }) });
+          await refresh();
+          notify(`${row[0]} is now ${details.role}.`);
+        } catch (error) { notify(error.message); }
+        return;
       case 'delete-notification':
         if (!await confirmDialog('Delete this notification permanently?', { title: 'Delete notification', confirmLabel: 'Delete', tone: 'danger' })) return;
         try {
@@ -284,6 +313,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const createLabel = { jobs: 'Create job order', customers: 'Create customer', 'my-advances': 'Request advance', advances: 'New advance', 'my-expense-claims': 'Submit expense claim' }[slug] || `Add ${info.title.replace(/s$/, '').toLowerCase()}`;
   const accessNote = isAdmin ? 'Admin access · Changes are recorded in the audit log.'
+    : manages ? 'Finance access · You release, pay and settle. Approvals stay with the manager.'
     : { customers: 'Staff access · You can manage customer records.', quotations: 'Staff access · You can prepare, issue and convert quotations.', invoices: 'Staff access · You can issue invoices and record customer payments.' }[slug]
       || 'Staff access · You can only view and update your assigned work.';
   const closeDialog = () => { setDialog(null); setTypedConfirm(''); };
@@ -297,7 +327,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
       {canEdit && <button role="menuitem" onClick={() => { setOpenRowActions(null); edit(row); }}>Edit record</button>}
       {slug === 'accounts' && (String(row[1]).toLowerCase() === String(user.username || '').toLowerCase() || row[0] === user.name) && <button role="menuitem" onClick={() => { setOpenRowActions(null); setDialog({ type: 'my-account', user }); }}>Manage my account</button>}
       {canPrintDocument(slug, row) && <button role="menuitem" onClick={() => { setOpenRowActions(null); printRecordDocument(slug, row, info.columns); }}>Print / save {documentLabel(slug)} PDF</button>}
-      {workflowActions(slug, row, info.columns, user.role).map(action => <button role="menuitem" key={action.label} onClick={() => { setOpenRowActions(null); workflow(row, action.action, action.status); }}>{action.label}</button>)}
+      {workflowActions(slug, row, info.columns, user.role).map(action => <button role="menuitem" key={action.label} onClick={() => { setOpenRowActions(null); workflow(row, action.action, action.status, action); }}>{action.label}</button>)}
       {showDelete && <>
         <span className="row-menu-divider" />
         <button role="menuitem" className="menu-danger" onClick={() => { setOpenRowActions(null); setDialog({ type: 'delete', row }); }}>Delete record</button>
@@ -310,7 +340,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
     if (!dialog) return null;
     const key = `${dialog.type}-${dialog.row?._id || dialog.row?.[0] || dialog.title || slug}`;
     if (['job-invoice', 'job-close', 'job-cancel'].includes(dialog.type)) return <JobFinanceDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
-    if (dialog.type === 'advance-expenses') return <AdvanceExpensesDialog key={key} row={dialog.row} columns={info.columns} readOnly={user.role !== 'Staff'} isAdmin={isAdmin} notify={notify} onClose={closeDialog} onChanged={() => { queryClient.invalidateQueries({ queryKey: ['module'] }); queryClient.invalidateQueries({ queryKey: ['dashboard'] }); }} />;
+    if (dialog.type === 'advance-expenses') return <AdvanceExpensesDialog key={key} row={dialog.row} columns={info.columns} readOnly={slug !== 'my-advances'} isAdmin={isAdmin && slug !== 'my-advances'} isFinance={slug !== 'my-advances' && isFinanceRole(user.role)} notify={notify} onClose={closeDialog} onChanged={() => { queryClient.invalidateQueries({ queryKey: ['module'] }); queryClient.invalidateQueries({ queryKey: ['dashboard'] }); }} />;
     if (dialog.type === 'staff-profile') return <StaffProfileDialog key={key} dialog={dialog} columns={info.columns} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'send-notification') return <SendNotificationDialog key={key} user={user} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'advance-issue') return <AdvanceIssueDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
@@ -322,7 +352,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   return <>
     <div className="page-heading module-heading">
       <div><div className="eyebrow">OPERATIONS</div><h1>{info.title}</h1><p>{info.description}</p></div>
-      {slug === 'advances' && isAdmin && <Link className="secondary-button" to="/advance-overview"><BarChart3 size={15} />Advance overview</Link>}
+      {slug === 'advances' && manages && <Link className="secondary-button" to="/advance-overview"><BarChart3 size={15} />Advance overview</Link>}
       {slug === 'accounts' && isAdmin && <button className="secondary-button" onClick={() => setDialog({ type: 'my-account', user })}><ShieldCheck size={15} />My account</button>}
       {slug === 'notifications' && isAdmin && <button className="primary-button" onClick={() => setDialog({ type: 'send-notification', title: 'send' })}><Send size={16} />Send notification</button>}
       {canCreate && <button className="primary-button" onClick={() => create()}><Plus size={16} />{createLabel}</button>}
@@ -346,7 +376,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
           <button className={`secondary-button filter-button ${filterOpen ? 'filter-selected' : ''}`} onClick={() => setFilterOpen(value => !value)}><Filter size={15} /> Filters {statusFilter && <span className="filter-count">1</span>}</button>
           {slug !== 'notifications' && <>
             <span className="toolbar-separator" />
-            {slug !== 'service-reports' && isAdmin && <button className="secondary-button export-button" onClick={() => onExport('xlsx')}><FileDown size={15} /> Export Excel</button>}
+            {slug !== 'service-reports' && manages && <button className="secondary-button export-button" onClick={() => onExport('xlsx')}><FileDown size={15} /> Export Excel</button>}
             <button className="secondary-button export-button" onClick={() => onExport('pdf')}><Download size={15} /> Export list PDF</button>
           </>}
         </div>

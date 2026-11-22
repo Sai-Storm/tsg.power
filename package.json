@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test:db": "node scripts/test-db.mjs",
+    "test:e2e": "playwright test",
     "check": "npm run lint && npm run build"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.65.1",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.39.5",
     "eslint-plugin-react": "^7.37.5",

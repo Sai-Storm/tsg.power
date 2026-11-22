@@ -1,5 +1,5 @@
-const CACHE = 'tsg-app-v1';
-const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/tsg-logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
+const CACHE = 'tsg-app-v2';
+const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/tsg-logo.png', '/tsg-mark.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -38,7 +38,17 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname.startsWith('/icons/') || url.pathname === '/tsg-logo.png' || url.pathname === '/manifest.webmanifest') {
+  // Built files have a content hash in their name, so a cached copy is always
+  // right. Keeping them lets the app open on site without a connection.
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
+      if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(cache => cache.put(request, copy)); }
+      return response;
+    })));
+    return;
+  }
+
+  if (url.pathname.startsWith('/icons/') || url.pathname === '/tsg-logo.png' || url.pathname === '/tsg-mark.png' || url.pathname === '/manifest.webmanifest') {
     event.respondWith(caches.match(request).then(cached => cached || fetch(request)));
   }
 });

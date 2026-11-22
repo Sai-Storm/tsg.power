@@ -74,6 +74,7 @@ The demo accounts use in-memory/localStorage records and do not authenticate aga
 npm run lint                 # ESLint
 npm run build                # production build
 npm run test:db -- --temp    # database tests in a throw-away PostgreSQL (needs PostgreSQL installed)
+npm run test:e2e             # browser tests (see e2e/README.md); E2E_CHANNEL=msedge uses installed Edge
 DATABASE_URL=postgresql://user:pass@host:5432/postgres npm run test:db   # or against a server you choose
 ```
 
@@ -81,5 +82,78 @@ The database tests (`supabase/tests`) build a fresh database from every migratio
 money logic (advances, settlements, returns, reimbursements, cash board totals, job profitability)
 and the access rules (staff only see their own advances, claims and nothing of salaries or the cash book).
 
-GitHub Actions (`.github/workflows/ci.yml`) runs lint, build and the database tests on every push.
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, build, the database tests and the browser
+smoke tests on every push.
 In Render, set **Auto-Deploy → After CI Checks Pass** so a failing commit is never deployed.
+
+## Roles
+
+| Role | Can do |
+|---|---|
+| **Admin** (manager) | Everything: approves advance requests, settlements and claims, manages accounts and settings. |
+| **Finance** | Releases advance money, pays approved claims, posts cash entries, settles and closes advances; sees the cash board, invoices, receivables, purchasing and reports. Cannot approve. Also has the normal staff pages for their own work. |
+| **Staff** | Own jobs, quotations, invoices, claims and advances. |
+
+Nobody can approve, release or settle **their own** advance or approve their own expenses; the
+database refuses it. Change a role in **Account management → … → Make Finance / Make Admin / Make Staff**.
+
+## Database version check
+
+The app asks the database for `schema_version()` when someone signs in. If the database is older
+than the code (a migration was not run), a yellow **Database update needed** banner appears instead
+of confusing errors. When you add a migration, update `schema_version()` in it and `REQUIRED_SCHEMA`
+in `src/lib/useAppStatus.js`.
+
+## Automatic database updates (optional)
+
+The CI job `deploy-database` runs `supabase db push` on every push to `main` once you enable it.
+Because earlier migrations were run by hand in the SQL Editor, tell Supabase they are already
+applied **once** before turning it on:
+
+```sh
+supabase login
+supabase link --project-ref <project-id>
+supabase migration list                       # shows which ones Supabase thinks are missing
+supabase migration repair --status applied 20261114000000 20261114000100   # …every version already run by hand
+```
+
+Then in GitHub: **Settings → Secrets and variables → Actions** add the secrets `SUPABASE_ACCESS_TOKEN`,
+`SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID` and the variable `AUTO_DB_PUSH = true`. Together with
+Render's *After CI Checks Pass* the database is always updated before the new app goes live.
+
+## Email and Telegram alerts
+
+Every notification can also be sent by email and/or Telegram to people who switch it on in
+**My profile → Alerts outside the app**. Payment reminders to customers (Receivables → Send reminder)
+go by email. Messages are queued in `outbound_messages` and sent by the `deliver-messages` edge function.
+
+1. Deploy the function: `supabase functions deploy deliver-messages`
+2. Add secrets in Supabase (**Edge Functions → Secrets**), any of:
+   - `RESEND_API_KEY` and `ALERT_EMAIL_FROM` (e.g. `TSG Power <alerts@yourdomain.com>`) for email via resend.com
+   - `TELEGRAM_BOT_TOKEN` from @BotFather for Telegram (each person presses **Start** on the bot once)
+3. Send the queue every 5 minutes (SQL Editor; needs the `pg_cron` and `pg_net` extensions):
+
+```sql
+select cron.schedule('tsg-deliver-messages', '*/5 * * * *', $$
+  select net.http_post(
+    url := 'https://<project-id>.supabase.co/functions/v1/deliver-messages',
+    headers := jsonb_build_object('Authorization', 'Bearer <service-role-key>', 'Content-Type', 'application/json'),
+    body := '{}'::jsonb);
+$$);
+```
+
+The app also triggers a send right after it queues a message, so step 3 only matters for alerts
+created by the daily schedule.
+
+## Daily alerts
+
+`send_daily_alerts()` runs every morning through pg_cron (and when an admin or finance user signs in).
+Each alert is sent at most once a day: low stock (weekly per item, until a purchase request is open),
+machines due for service within 14 days, overdue invoices (weekly) and, on the 1st–3rd, "monthly
+management report ready".
+
+## Files
+
+Uploaded files live in the private `attachments` bucket and open through links that expire after an
+hour. Receipts and cash documents can be opened only by the person who uploaded them and by Admin and
+Finance; job, machine and report files by every signed-in user.

@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import react from 'eslint-plugin-react';
 
 export default [
-  { ignores: ['dist', 'node_modules', 'public', 'supabase/functions'] },
+  { ignores: ['dist', 'node_modules', 'public', 'supabase/functions', 'playwright-report', 'test-results'] },
   {
     files: ['**/*.{js,jsx,mjs}'],
     languageOptions: {

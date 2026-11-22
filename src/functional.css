@@ -971,3 +971,27 @@ html[data-theme="dark"] .special-fields .send-note-audience label{border-color:r
 html[data-theme="dark"] .special-fields .send-note-audience label.selected{background:#1b3a62;border-color:#9cc4ff;color:#eef6fc}
 html[data-theme="dark"] .send-note-people ul,html[data-theme="dark"] .send-note-people li{border-color:rgba(220,240,255,.15)}
 html[data-theme="dark"] .send-note-people small,html[data-theme="dark"] .send-note-people li.empty{color:#bccddd}
+
+/* Unread notification count (replaces the always-on dot) */
+.nav-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#d8551f;color:#fff;font:700 11.5px/20px 'DM Sans',sans-serif;font-style:normal;text-align:center}
+.top-icon i.top-count{right:-2px;top:-2px;width:auto;height:18px;min-width:18px;padding:0 5px;border-radius:999px;border:2px solid #fff;background:#d8551f;color:#fff;font:700 10.5px/14px 'DM Sans',sans-serif;font-style:normal;text-align:center}
+html[data-theme="dark"] .nav-count,html[data-theme="dark"] .top-icon i.top-count{background:#ff8f57;color:#1b0d05}
+html[data-theme="dark"] .top-icon i.top-count{border-color:#0d2136}
+
+/* Database update needed */
+.schema-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 18px;padding:14px 16px;border-radius:12px;border:1.5px solid #e09400;background:#fff3dc;color:#5a3500;font-size:14px;line-height:1.5}
+.schema-banner svg{flex-shrink:0;margin-top:2px;color:#8a4b00}
+.schema-banner b{display:block;font-size:15px}
+.schema-banner code{padding:1px 5px;border-radius:5px;background:rgba(0,0,0,.07)}
+html[data-theme="dark"] .schema-banner{background:#3a2c12;border-color:#e0a23a;color:#ffe7bd}
+html[data-theme="dark"] .schema-banner svg{color:#ffd48c}
+
+/* Alert settings (My profile) */
+.alert-settings{margin-top:16px}
+.alert-settings h2{display:flex;align-items:center;gap:8px;margin:0 0 6px;font:700 17px Manrope,sans-serif}
+.alert-settings>p{margin:0 0 14px;font-size:14px;color:#5b6b7c}
+.special-fields label.alert-check{flex-direction:row;align-items:center;gap:12px}
+.special-fields .alert-check input{width:20px;height:20px;min-height:0;padding:0;accent-color:#1769e0}
+.alert-check span{display:flex;flex-direction:column}
+.alert-settings small{font-size:13px;color:#5b6b7c;font-weight:400;line-height:1.5}
+html[data-theme="dark"] .alert-settings>p,html[data-theme="dark"] .alert-settings small{color:#bccddd}
