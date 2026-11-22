@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Check, CornerUpLeft, Paperclip, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
+import { Briefcase, Check, CornerUpLeft, Paperclip, Pencil, Save, Send, Trash2, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { ReceiptLink, looksLikeFile } from './Attachments.jsx';
 import './advance.css';
@@ -64,7 +64,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
   const history = data?.history || [];
   const drafts = entries.filter(isDraft);
 
-  const [form, setForm] = useState(null); // null = closed, otherwise the expense being added / edited
+  const [form, setForm] = useState(emptyForm); // the expense being added, or edited when form.id is set
   const [finance, setFinance] = useState({ date: todayKey(), method: 'Cash', reference: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -112,7 +112,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
   };
 
   // ---- Staff -----------------------------------------------------------------
-  const saveDraft = async addAnother => {
+  const saveDraft = async () => {
     const value = num(form.amount);
     if (value <= 0) { setError('Enter the amount spent.'); return; }
     if (!form.description.trim()) { setError('Describe what the money was spent on.'); return; }
@@ -131,7 +131,7 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
       if (form.receipt) body.append('receipt_file', form.receipt);
       await apiRequest(`/advances/${encodeURIComponent(advanceId)}/draft`, { method: 'POST', body });
     }, form.id ? 'Draft updated. Nothing has been sent to the manager.' : 'Saved as draft. Nothing has been sent to the manager.');
-    if (ok) setForm(addAnother ? { ...emptyForm(), date: form.date, category: form.category } : null);
+    if (ok) setForm({ ...emptyForm(), date: form.date, category: form.category });
   };
 
   const deleteDraft = entry => {
@@ -193,109 +193,114 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
 
   const openEdit = entry => { setError(''); setForm({ ...emptyForm(), id: String(entry.id), date: String(entry.date || '').slice(0, 10) || todayKey(), category: entry.category || CATEGORIES[0], supplier_name: entry.supplier_name || '', description: entry.description || '', notes: entry.notes || '', amount: String(num(entry.amount)), receipt_file: entry.receipt_file || '' }); };
   const showActions = canRecord || canReview;
+  const formDirty = Boolean(form.id || form.description.trim() || String(form.amount).trim());
+  const next = nextStep(stage, { isAdmin, readOnly, hasDrafts: drafts.length > 0, reviewNote: advance?.review_note });
+  const fileInputKey = `${form.id || 'new'}-${entries.length}`;
 
-  return <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && !busy && onClose()}>
+  return <div className="modal-backdrop advx-backdrop" onMouseDown={event => event.target === event.currentTarget && !busy && onClose()}>
     <section className="modal advx-modal" role="dialog" aria-label={`Advance ${row?.[0]}`}>
-      <div className="modal-header">
-        <div>
-          <div className="eyebrow">STAFF ADVANCE{advance?.staff_name && advance.staff_name !== '—' ? ` · ${advance.staff_name}` : ''}</div>
-          <h2>Advance #{advance?.number || row?.[0]} {advance && <span className={statusClass(isOpen(status) ? 'in progress' : status)}>{stageLabel(status)}</span>}</h2>
-          <div className="advx-job"><Briefcase size={16} /><span>Job order</span><b>{jobNumber || 'Not linked'}</b>{advance?.job_title ? <em>{advance.job_title}</em> : null}</div>
-          {advance?.purpose && advance.purpose !== '—' && <p className="advx-purpose">{advance.purpose}</p>}
+      <header className="advx-head">
+        <div className="advx-head-main">
+          <div className="advx-title"><h2>{advance?.number || row?.[0]}</h2>{advance && <span className={statusClass(isOpen(status) ? 'in progress' : status)}>{stageLabel(status)}</span>}</div>
+          <div className="advx-chips">
+            <span className="advx-chip job"><Briefcase size={15} />Job order <b>{jobNumber || 'Not linked'}</b>{advance?.job_title ? <em>{advance.job_title}</em> : null}</span>
+            {advance?.staff_name && advance.staff_name !== '—' && <span className="advx-chip">Staff <b>{advance.staff_name}</b></span>}
+            {advance?.purpose && advance.purpose !== '—' && <span className="advx-chip">Purpose <b>{advance.purpose}</b></span>}
+          </div>
         </div>
-        <button className="icon-button" onClick={onClose} aria-label="Close dialog" disabled={busy}><X size={18} /></button>
-      </div>
+        <button className="advx-close" onClick={onClose} aria-label="Close dialog" disabled={busy}><X size={20} /></button>
+      </header>
 
       <div className="advx-body">
         {!isDemo && query.isLoading && <p className="advx-muted">Loading…</p>}
         {!isDemo && query.isError && <p className="advx-error">{query.error?.message}</p>}
         {advance && <>
-          <ol className="advx-steps" aria-label="Advance progress">
-            {STEPS.map((label, index) => <li key={label} className={index < stage ? 'done' : index === stage ? 'current' : ''}><i>{index < stage ? <Check size={13} /> : index + 1}</i><span>{label}</span></li>)}
-          </ol>
+          <section className={`advx-next advx-next-${next.tone}`}>
+            <div className="advx-next-top"><span>Step {Math.min(stage + 1, STEPS.length)} of {STEPS.length}</span><b>{STEPS[stage]}</b></div>
+            <div className="advx-track" aria-hidden="true">{STEPS.map((label, index) => <i key={label} className={index < stage ? 'done' : index === stage ? 'current' : ''} />)}</div>
+            <p>{next.text}</p>
+          </section>
 
-          {advance.review_note && isOpen(status) && <div className="advx-callout danger"><b>Returned by the manager:</b> {advance.review_note}</div>}
-
-          <div className="advx-summary">
-            <div className="advx-total"><span>Advance received</span><b>{money(amount)}</b>{advance.issued_on && <small>Released {shortDate(advance.issued_on)}{advance.payment_method ? ` · ${advance.payment_method}` : ''}</small>}</div>
-            <div className="advx-figure drafts"><span>Draft expenses</span><b>{money(draftTotal)}</b></div>
-            <div className="advx-figure submitted"><span>{approved ? 'Submitted / approved' : 'Submitted'}</span><b>{money(submitted + approved)}</b></div>
+          <section className="advx-tiles">
+            <div className="advx-tile"><span>Advance received</span><b>{money(amount)}</b>{advance.issued_on ? <small>Released {shortDate(advance.issued_on)}{advance.payment_method ? ` · ${advance.payment_method}` : ''}</small> : <small>Not released yet</small>}</div>
+            <div className="advx-tile amber"><span>Draft expenses</span><b>{money(draftTotal)}</b><small>Saved, not sent</small></div>
+            <div className="advx-tile blue"><span>Submitted</span><b>{money(submitted + approved)}</b><small>{approved ? `${money(approved)} approved` : 'Sent to manager'}</small></div>
             {num(advance.over) > 0
-              ? <div className="advx-figure over"><span>Over the advance</span><b>{money(advance.over)}</b></div>
-              : <div className="advx-figure remaining"><span>Unrecorded balance</span><b>{money(remaining)}</b></div>}
-          </div>
-          <div className="advx-progress">
+              ? <div className="advx-tile red"><span>Over the advance</span><b>{money(advance.over)}</b><small>Company reimburses after approval</small></div>
+              : <div className="advx-tile"><span>Unrecorded balance</span><b>{money(remaining)}</b><small>Not yet recorded</small></div>}
+          </section>
+          {amount > 0 && <div className="advx-progress">
             <div className="advx-bar" aria-hidden="true"><i className="approved" style={{ width: pct(approved) }} /><i className="submitted" style={{ width: pct(submitted) }} /><i className="drafts" style={{ width: pct(draftTotal) }} /></div>
-            <p><b>{money(recorded)}</b> / {money(amount)} recorded{draftTotal > 0 ? ` · ${money(draftTotal)} still in draft (not sent)` : ''}</p>
-          </div>
-
-          <h3 className="advx-section-title">Expense records</h3>
-          <div className="advx-table-wrap"><table className="advx-table">
-            <thead><tr><th>Date</th><th>Description</th><th>Receipt</th><th className="num">Amount</th><th>Status</th>{showActions && <th />}</tr></thead>
-            <tbody>
-              {entries.map(entry => { const draft = isDraft(entry); const reviewable = ['submitted', 'approved', 'rejected'].includes(lower(entry.status)); return <tr key={entry.id} className={draft ? 'is-draft' : ''}>
-                <td className="advx-date">{shortDate(entry.date)}</td>
-                <td><b>{entry.description}</b><small>{[entry.category, entry.supplier_name, entry.number, entry.job_number || jobNumber].filter(Boolean).join(' · ')}</small>{entry.notes && <small className="advx-note">{entry.notes}</small>}</td>
-                <td>{entry.receipt_file ? (looksLikeFile(entry.receipt_file) ? <ReceiptLink url={entry.receipt_file} name={`Receipt · ${entry.description || entry.number || ''}`} /> : <span className="advx-receipt"><Paperclip size={13} />Attached</span>) : <span className="advx-missing">Missing</span>}</td>
-                <td className="num">{money(entry.amount)}</td>
-                <td><span className={statusClass(entry.status)}>{entry.status}</span>{entry.rejection_reason && <small className="advx-reason">{entry.rejection_reason}</small>}</td>
-                {showActions && <td className="advx-row-actions">
-                  {draft && canRecord && <><button className="row-action-button" disabled={busy} onClick={() => openEdit(entry)} aria-label="Edit draft" title="Edit"><Pencil size={14} /></button><button className="row-action-button danger" disabled={busy} onClick={() => deleteDraft(entry)} aria-label="Delete draft" title="Delete"><Trash2 size={14} /></button></>}
-                  {canReview && reviewable && <><button className="row-action-button ok" disabled={busy || lower(entry.status) === 'approved'} onClick={() => reviewExpense(entry, 'Approved')}>Approve</button><button className="row-action-button danger" disabled={busy} onClick={() => reviewExpense(entry, 'Rejected')}>Reject</button></>}
-                </td>}
-              </tr>; })}
-              {!entries.length && <tr><td colSpan={showActions ? 6 : 5} className="advx-empty">No expenses recorded yet.{canRecord ? ' Click "Add expense" to start.' : ''}</td></tr>}
-            </tbody>
-            {entries.length > 0 && <tfoot><tr><td colSpan={3}>Total (excluding rejected)</td><td className="num">{money(entries.reduce((s, e) => s + (lower(e.status) === 'rejected' ? 0 : num(e.amount)), 0))}</td><td colSpan={showActions ? 2 : 1} /></tr></tfoot>}
-          </table></div>
-
-          {form && <div className="advx-form">
-            <h3>{form.id ? 'Edit expense (draft)' : 'Add expense'}</h3>
-            <div className="advx-form-grid">
-              <label>Advance ID<input value={advance.number || row?.[0] || ''} readOnly /></label>
-              <label>Job order<input value={jobNumber || '—'} readOnly /></label>
-              <label>Expense date<input type="date" value={form.date} max={todayKey()} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
-              <label>Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{[...new Set([...CATEGORIES, form.category])].map(c => <option key={c}>{c}</option>)}</select></label>
-              <label className="wide">Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="e.g. Generator spare parts" /></label>
-              <label>Amount (MMK)<input type="number" min="0" step="any" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="300000" /></label>
-              <label>Supplier<input value={form.supplier_name} onChange={e => setForm({ ...form, supplier_name: e.target.value })} placeholder="e.g. ABC Supplier" /></label>
-              <label className="wide">Receipt (image / PDF)<input type="file" accept="image/*,.pdf" onChange={e => setForm({ ...form, receipt: e.target.files?.[0] || null })} /><small>{form.receipt ? form.receipt.name : form.receipt_file ? 'A receipt is already attached. Choose a file only to replace it.' : 'You can add it later, but it is required before submitting.'}</small></label>
-              <label className="wide">Notes<input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder={jobNumber ? `e.g. Purchased for job ${jobNumber}` : 'Optional'} /></label>
-            </div>
-            {num(form.amount) > 0 && formTotalAfter > amount && <p className="advx-warn">This brings your expenses to {money(formTotalAfter)}, which is {money(formTotalAfter - amount)} more than the advance. You can still save it. The company reimburses the difference after approval.</p>}
-            <p className="advx-muted">Saving keeps this as a draft. Nothing is sent to the manager until you click <b>Submit settlement</b>.</p>
-            <div className="advx-form-actions">
-              <button className="secondary-button" disabled={busy} onClick={() => { setForm(null); setError(''); }}>Cancel</button>
-              {!form.id && <button className="secondary-button" disabled={busy} onClick={() => saveDraft(true)}>Save and add another</button>}
-              <button className="primary-button" disabled={busy} onClick={() => saveDraft(false)}>{busy ? 'Saving…' : 'Save draft'}</button>
-            </div>
+            <p><b>{money(recorded)}</b> of {money(amount)} recorded</p>
           </div>}
 
-          {(drafts.length > 0 || stage >= 4) && <div className={`advx-settle advx-settle-${settlement.kind}`}>
-            <h3 className="advx-section-title">Settlement calculation</h3>
-            <table><tbody>
-              <tr><td>Advance received</td><td className="num">{money(amount)}</td></tr>
-              <tr><td>{usesApproved ? 'Approved expenses' : 'Total expenses'}</td><td className="num">{money(settlementExpenses)}</td></tr>
-              {num(advance.rejected) > 0 && <tr className="muted"><td>Rejected (not counted)</td><td className="num">{money(advance.rejected)}</td></tr>}
-              <tr className="result"><td>{settlement.label}</td><td className="num">{money(settlement.value)}</td></tr>
-            </tbody></table>
+          <section className="advx-section">
+            <h3>Expense records <small>{entries.length} item{entries.length === 1 ? '' : 's'}</small></h3>
+            {!entries.length && <p className="advx-empty">No expenses recorded yet.{canRecord ? ' Fill in the form below and click Save draft.' : ''}</p>}
+            <ul className="advx-list">
+              {entries.map(entry => { const draft = isDraft(entry); const reviewable = ['submitted', 'approved', 'rejected'].includes(lower(entry.status)); const editing = form.id === String(entry.id); return <li key={entry.id} className={`${draft ? 'is-draft' : ''} ${editing ? 'is-editing' : ''}`}>
+                <div className="advx-item-main">
+                  <div className="advx-item-top"><b>{entry.description}</b><span className={statusClass(entry.status)}>{entry.status}</span></div>
+                  <div className="advx-item-meta">{[shortDate(entry.date), entry.category, entry.supplier_name, entry.number].filter(Boolean).join(' · ')}</div>
+                  {entry.notes && <div className="advx-item-note">{entry.notes}</div>}
+                  {entry.rejection_reason && <div className="advx-item-reason">Rejected: {entry.rejection_reason}</div>}
+                  <div className="advx-item-receipt">{entry.receipt_file ? (looksLikeFile(entry.receipt_file) ? <ReceiptLink url={entry.receipt_file} name={`Receipt · ${entry.description || entry.number || ''}`} /> : <span className="advx-receipt"><Paperclip size={14} />Receipt attached</span>) : <span className="advx-missing">No receipt yet</span>}</div>
+                </div>
+                <div className="advx-item-side">
+                  <b className="advx-item-amount">{money(entry.amount)}</b>
+                  {showActions && <div className="advx-item-actions">
+                    {draft && canRecord && <><button className="advx-btn small" disabled={busy} onClick={() => openEdit(entry)}><Pencil size={14} />Edit</button><button className="advx-btn small danger" disabled={busy} onClick={() => deleteDraft(entry)}><Trash2 size={14} />Delete</button></>}
+                    {canReview && reviewable && <><button className="advx-btn small ok" disabled={busy || lower(entry.status) === 'approved'} onClick={() => reviewExpense(entry, 'Approved')}><Check size={14} />Approve</button><button className="advx-btn small danger" disabled={busy} onClick={() => reviewExpense(entry, 'Rejected')}><X size={14} />Reject</button></>}
+                  </div>}
+                </div>
+              </li>; })}
+            </ul>
+            {entries.length > 0 && <div className="advx-list-total"><span>Total (excluding rejected)</span><b>{money(entries.reduce((s, e) => s + (lower(e.status) === 'rejected' ? 0 : num(e.amount)), 0))}</b></div>}
+          </section>
+
+          {canRecord && <section className="advx-section advx-form">
+            <h3>{form.id ? 'Edit draft expense' : 'Add expense'}</h3>
+            <div className="advx-form-grid">
+              <label>Expense date<input type="date" value={form.date} max={todayKey()} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+              <label>Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{[...new Set([...CATEGORIES, form.category])].map(c => <option key={c}>{c}</option>)}</select></label>
+              <label>Amount (MMK)<input type="number" min="0" step="any" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="e.g. 300000" /></label>
+              <label className="wide">Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="e.g. Generator spare parts" /></label>
+              <label>Supplier<input value={form.supplier_name} onChange={e => setForm({ ...form, supplier_name: e.target.value })} placeholder="e.g. ABC Supplier" /></label>
+              <label className="wide">Receipt (photo or PDF)<input key={fileInputKey} type="file" accept="image/*,.pdf" onChange={e => setForm({ ...form, receipt: e.target.files?.[0] || null })} /><small>{form.receipt ? form.receipt.name : form.receipt_file ? 'Receipt already attached. Choose a file only to replace it.' : 'Can be added later, but needed before you submit.'}</small></label>
+              <label>Notes<input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder={jobNumber ? `For job ${jobNumber}` : 'Optional'} /></label>
+            </div>
+            <p className="advx-form-link">Linked to advance <b>{advance.number || row?.[0]}</b> and job order <b>{jobNumber || '—'}</b>.</p>
+            {num(form.amount) > 0 && formTotalAfter > amount && <p className="advx-warn">This brings your expenses to {money(formTotalAfter)}, {money(formTotalAfter - amount)} more than the advance. You can still save it. The company reimburses the difference after approval.</p>}
+            <div className="advx-form-actions">
+              {formDirty && <button className="advx-btn" disabled={busy} onClick={() => { setForm(emptyForm()); setError(''); }}>{form.id ? 'Cancel edit' : 'Clear'}</button>}
+              <button className="advx-btn primary" disabled={busy} onClick={() => saveDraft()}><Save size={16} />{busy ? 'Saving…' : form.id ? 'Save changes' : 'Save draft'}</button>
+            </div>
+            <p className="advx-hint">Save draft keeps the expense here only. Nothing goes to the manager until you click <b>Submit settlement</b>.</p>
+          </section>}
+
+          {(drafts.length > 0 || stage >= 4) && <section className={`advx-section advx-settle advx-settle-${settlement.kind}`}>
+            <h3>Settlement calculation</h3>
+            <dl>
+              <div><dt>Advance received</dt><dd>{money(amount)}</dd></div>
+              <div><dt>{usesApproved ? 'Approved expenses' : 'Total expenses'}</dt><dd>{money(settlementExpenses)}</dd></div>
+              {num(advance.rejected) > 0 && <div className="muted"><dt>Rejected (not counted)</dt><dd>{money(advance.rejected)}</dd></div>}
+              <div className="result"><dt>{settlement.label}</dt><dd>{money(settlement.value)}</dd></div>
+            </dl>
             <p>{stage >= 6
               ? (num(advance.returned_amount) > 0 ? `Closed. ${money(advance.returned_amount)} was returned to the company.` : num(advance.reimbursed_amount) > 0 ? `Closed. ${money(advance.reimbursed_amount)} was reimbursed to the staff member.` : 'Closed. Fully settled.')
               : settlement.text}</p>
-          </div>}
+          </section>}
 
-          {canReconcile && <div className="advx-form">
+          {canReconcile && <section className="advx-section advx-form">
             <h3>{settlement.kind === 'return' ? 'Record returned cash' : settlement.kind === 'reimburse' ? 'Pay reimbursement' : 'Close advance'}</h3>
             <div className="advx-form-grid">
               <label>Date<input type="date" value={finance.date} onChange={e => setFinance({ ...finance, date: e.target.value })} /></label>
               <label>Method<select value={finance.method} onChange={e => setFinance({ ...finance, method: e.target.value })}><option>Cash</option><option>Bank transfer</option><option>Cheque</option></select></label>
-              <label className="wide">Reference<input value={finance.reference} onChange={e => setFinance({ ...finance, reference: e.target.value })} placeholder="Receipt / voucher / transfer no." /></label>
+              <label>Reference<input value={finance.reference} onChange={e => setFinance({ ...finance, reference: e.target.value })} placeholder="Receipt / voucher no." /></label>
             </div>
-          </div>}
+          </section>}
 
           {error && <p className="advx-error" role="alert">{error}</p>}
-          {!readOnly && !advance.can_record && stage < 3 && <p className="advx-muted">You can record expenses once finance releases the money (current status: {status}).</p>}
-          {!readOnly && stage === 4 && <p className="advx-muted">Your settlement is with the manager. You will be notified when it is approved or returned.</p>}
 
           {history.length > 0 && <details className="advx-history"><summary>History ({history.length})</summary><ul>
             {history.map((h, i) => <li key={i}><b>{h.action}</b>{h.amount != null && h.amount !== '' ? ` · ${money(h.amount)}` : ''}{h.note ? ` · ${h.note}` : ''}<small>{h.by ? `${h.by} · ` : ''}{h.at ? new Date(h.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</small></li>)}
@@ -303,13 +308,26 @@ export default function AdvanceExpensesDialog({ row, columns, isDemo, readOnly, 
         </>}
       </div>
 
-      <div className="modal-footer advx-footer">
-        <button className="secondary-button" onClick={onClose} disabled={busy}>Close</button>
-        {canRecord && !form && <button className="secondary-button" disabled={busy} onClick={() => { setError(''); setForm(emptyForm()); }}><Plus size={16} />Add expense</button>}
-        {canRecord && <button className="primary-button" disabled={busy || Boolean(form) || !drafts.length} title={drafts.length ? '' : 'Add at least one expense first'} onClick={submitSettlement}><Send size={16} />Submit settlement{drafts.length ? ` (${drafts.length})` : ''}</button>}
-        {canReview && <><button className="secondary-button" disabled={busy} onClick={() => decide('return')}><CornerUpLeft size={16} />Return to staff</button><button className="primary-button" disabled={busy} onClick={() => decide('approve')}><Check size={16} />Approve settlement</button></>}
-        {canReconcile && <button className="primary-button" disabled={busy} onClick={reconcile}><Check size={16} />{settlement.kind === 'return' ? `Record ${money(settlement.value)} returned & close` : settlement.kind === 'reimburse' ? `Pay ${money(settlement.value)} & close` : 'Close advance'}</button>}
-      </div>
+      <footer className="advx-foot">
+        <button className="advx-btn" onClick={onClose} disabled={busy}>Close</button>
+        {canRecord && <button className="advx-btn primary" disabled={busy || formDirty || !drafts.length} title={formDirty ? 'Save or clear the expense you are typing first' : drafts.length ? '' : 'Save at least one draft first'} onClick={submitSettlement}><Send size={16} />Submit settlement{drafts.length ? ` (${drafts.length} · ${money(draftTotal)})` : ''}</button>}
+        {canReview && <><button className="advx-btn" disabled={busy} onClick={() => decide('return')}><CornerUpLeft size={16} />Return to staff</button><button className="advx-btn primary" disabled={busy} onClick={() => decide('approve')}><Check size={16} />Approve settlement</button></>}
+        {canReconcile && <button className="advx-btn primary" disabled={busy} onClick={reconcile}><Check size={16} />{settlement.kind === 'return' ? `Record ${money(settlement.value)} returned & close` : settlement.kind === 'reimburse' ? `Pay ${money(settlement.value)} & close` : 'Close advance'}</button>}
+      </footer>
     </section>
   </div>;
+}
+
+// Plain-language "what happens next" for each stage and viewer.
+function nextStep(stage, { isAdmin, readOnly, hasDrafts, reviewNote }) {
+  const staff = !readOnly && !isAdmin;
+  if (stage === 0) return { tone: 'wait', text: isAdmin ? 'Waiting for approval. Approve or reject this request from the Staff advances list.' : 'Waiting for the manager to approve your request. You can add expenses after finance releases the money.' };
+  if (stage === 1) return { tone: 'wait', text: isAdmin ? 'Approved. Use "Release money" in the Staff advances list to record the payment.' : 'Approved. Waiting for finance to release the money. You can add expenses after that.' };
+  if (stage === 3) {
+    if (reviewNote) return { tone: 'alert', text: `Returned by the manager: ${reviewNote}` };
+    return { tone: 'go', text: staff ? (hasDrafts ? 'Keep adding expenses with Save draft. When you are done, click Submit settlement at the bottom.' : 'Add each expense below and click Save draft. When you are done, click Submit settlement.') : 'The staff member is recording expenses. Nothing has been submitted yet.' };
+  }
+  if (stage === 4) return { tone: 'wait', text: isAdmin ? 'Approve or reject each expense, then click Approve settlement (or Return to staff).' : 'Submitted. The manager is reviewing your expenses. You will be notified.' };
+  if (stage === 5) return { tone: 'wait', text: isAdmin ? 'Settlement approved. Record the returned cash or reimbursement below, then close the advance.' : 'Settlement approved. Finance will settle the balance with you.' };
+  return { tone: 'done', text: 'This advance is closed.' };
 }
