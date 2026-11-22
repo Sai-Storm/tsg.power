@@ -175,7 +175,7 @@ const PRINT_COLUMNS = {
   expenses: ['reference', 'type', 'category', 'employee_source', 'job_order', 'date', 'amount', 'status', 'description'],
   'my-expense-claims': ['voucher', 'category', 'job_order', 'date', 'amount', 'status', 'description'],
   advances: ['advance', 'staff_name', 'issued', 'job_order', 'purpose', 'amount', 'claimed', 'balance', 'status'],
-  'my-advances': ['advance', 'issued', 'purpose', 'amount', 'claimed', 'balance', 'status'],
+  'my-advances': ['advance', 'job_order', 'issued', 'purpose', 'amount', 'claimed', 'balance', 'status'],
   'cash-entries': ['number', 'type', 'date', 'account', 'counterparty', 'job_order', 'amount', 'method', 'status', 'description'],
   staff: ['staff_member', 'employee_id', 'designation', 'phone', 'email', 'active_jobs', 'status'],
   salary: ['voucher', 'staff_member', 'salary_month', 'net_pay', 'paid_on', 'status'],
@@ -531,8 +531,10 @@ async function workflowRoute(resource, id, action, payload) {
     if (action === 'claim') return rpc('claim_advance', { p_advance: id, p_payload: payload || {} });
     if (action === 'draft') return rpc('save_advance_draft', { p_advance: id, p_payload: payload || {} });
     if (action === 'delete-draft') return rpc('delete_advance_draft', { p_expense: payload?.expense_id });
-    if (action === 'submit-drafts') return rpc('submit_advance_drafts', { p_advance: id, p_expenses: payload?.ids?.length ? payload.ids : null });
-    if (action === 'settle') return rpc('settle_advance', { p_advance: id, p_amount: payload?.amount ?? 0 });
+    if (action === 'submit-drafts' || action === 'submit-settlement') return rpc('submit_advance_settlement', { p_advance: id, p_note: payload?.note || null });
+    if (action === 'review-expense') return rpc('review_advance_expense', { p_expense: payload?.expense_id, p_decision: payload?.decision, p_reason: payload?.reason || null });
+    if (action === 'decide') return rpc('decide_advance_settlement', { p_advance: id, p_decision: payload?.decision, p_note: payload?.note || null });
+    if (action === 'settle' || action === 'reconcile') return rpc('reconcile_advance', { p_advance: id, p_payload: payload || {} });
     if (action === 'approve') return rpc('set_advance_status', { p_advance: id, p_status: 'Approved' });
     if (action === 'reject') return rpc('set_advance_status', { p_advance: id, p_status: 'Rejected' });
   }
