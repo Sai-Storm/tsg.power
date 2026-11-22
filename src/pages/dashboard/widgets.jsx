@@ -11,7 +11,7 @@ export function MetricCard({ stat, value, delta, index }) {
       </div>
       <div className="stat-label">{stat.label}</div>
       <div className="stat-value">{value}</div>
-      <div className="stat-delta">{delta || 'Current period'}</div>
+      <div className="stat-delta">{delta || 'View details'}</div>
     </Link>
   );
 }

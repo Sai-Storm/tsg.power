@@ -12,7 +12,7 @@ import { canPrintDocument, documentLabel, printRecordDetails, printRecordDocumen
 // smaller workflow forms (payment, job note, completion report, accounts).
 // The caller reads what the user entered from the `dialog` object on confirm.
 
-const CLAIM_MODULES = ['cash-claims', 'my-expense-claims'];
+const CLAIM_MODULES = ['cash-claims'];
 const isFileValue = value => (typeof File !== 'undefined' && value instanceof File) || (Array.isArray(value) && value.length > 0);
 
 function readPhoto(file, apply, setError) {

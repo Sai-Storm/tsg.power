@@ -15,7 +15,7 @@ export function normalizeCurrency(value) {
 
 /** Module slug -> API resource name. */
 export function apiEndpoint(slug) {
-  return ({ accounts: 'users', 'my-expense-claims': 'expenses', salary: 'salaries' })[slug] || slug;
+  return ({ accounts: 'users', salary: 'salaries' })[slug] || slug;
 }
 
 export function formatMoney(value) {

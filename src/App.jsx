@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { ArrowRight, Bell, Check, ChevronRight, DatabaseZap, LogOut, Menu, Moon, Search, ShieldCheck, Sun, X } from 'lucide-react';
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { AlertCircle, ArrowRight, Bell, Check, ChevronRight, Info, DatabaseZap, LogOut, Menu, Moon, Search, ShieldCheck, Sun, X } from 'lucide-react';
 import { apiRequest } from './api/client.js';
 import { getCurrentUser, onAuthStateChange, signInWithGoogle, signInWithPassword, signOut as endSession } from './api/auth.js';
 import { isSupabaseConfigured } from './api/supabase.js';
@@ -38,11 +38,12 @@ export default function App() {
   // While Supabase restores the session (reload, new tab, Google redirect) show a splash instead of flashing the login page.
   const [authChecking, setAuthChecking] = useState(() => isSupabaseConfigured && !initialUser());
   const [menuOpen, setMenuOpen] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState(null);
   const [loginNotice, setLoginNotice] = useState(null);
   const [globalSearch, setGlobalSearch] = useState('');
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('tsg-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } });
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -59,19 +60,27 @@ export default function App() {
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
   }, [menuOpen]);
 
-  const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
-  const showLoginNotice = (type, message) => {
-    const id = Date.now();
-    setLoginNotice({ id, type, message });
-    window.setTimeout(() => setLoginNotice(current => (current?.id === id ? null : current)), type === 'success' ? 4000 : 6000);
+  // tone: 'success' (default), 'error' or 'info'. Errors stay longer.
+  const notify = (message, tone = 'success') => {
+    if (!message) return;
+    const id = Date.now() + Math.random();
+    setToast({ id, message: String(message), tone });
+    window.setTimeout(() => setToast(current => (current?.id === id ? null : current)), tone === 'error' ? 6500 : 3500);
   };
+  // Only problems get a pop-up; a successful sign-in just opens the dashboard.
+  const showLoginNotice = message => {
+    const id = Date.now();
+    setLoginNotice({ id, message });
+    window.setTimeout(() => setLoginNotice(current => (current?.id === id ? null : current)), LoginNotice.duration);
+  };
+  const openDashboard = () => { setLoginNotice(null); navigate('/', { replace: true }); };
   const login = async credentials => {
     const nextUser = await signInWithPassword(credentials.email, credentials.password);
     sessionStorage.removeItem('tsg_token');
     sessionStorage.removeItem('tsg_refresh_token');
     sessionStorage.setItem('tsg_user', JSON.stringify(nextUser));
     setUser(nextUser);
-    showLoginNotice('success', `Welcome back, ${nextUser.name.split(' ')[0]}.`);
+    openDashboard();
   };
   const loginWithGoogle = async () => { sessionStorage.setItem('tsg-login-pending', 'google'); await signInWithGoogle(); };
   const logout = () => {
@@ -88,7 +97,7 @@ export default function App() {
   useEffect(() => {
     if (user && sessionStorage.getItem('tsg-login-pending') === 'google') {
       sessionStorage.removeItem('tsg-login-pending');
-      showLoginNotice('success', `Welcome back, ${user.name.split(' ')[0]}.`);
+      openDashboard();
     }
   }, [user]);
   // Daily reminders and alerts (also scheduled in the database when pg_cron is
@@ -112,12 +121,12 @@ export default function App() {
     let active = true;
     const redirectError = oauthErrorFromUrl();
     const pendingGoogle = sessionStorage.getItem('tsg-login-pending') === 'google';
-    if (redirectError) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('error', redirectError); }
+    if (redirectError) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice(redirectError); }
     getCurrentUser().then(nextUser => {
       if (active && nextUser) { sessionStorage.setItem('tsg_user', JSON.stringify(nextUser)); setUser(nextUser); return; }
-      if (active && pendingGoogle && !redirectError) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('error', 'Google sign-in did not complete. Please try again.'); }
+      if (active && pendingGoogle && !redirectError) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('Google sign-in did not complete. Please try again.'); }
     }).catch(() => {
-      if (active && pendingGoogle) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('error', 'Google sign-in could not be completed. Please try again.'); }
+      if (active && pendingGoogle) { sessionStorage.removeItem('tsg-login-pending'); showLoginNotice('Google sign-in could not be completed. Please try again.'); }
     }).finally(() => { if (active) setAuthChecking(false); });
     const listener = onAuthStateChange((nextUser, event) => {
       if (!active) return;
@@ -131,7 +140,7 @@ export default function App() {
 
   if (!user && authChecking) return <div className="login-screen" style={{ display: 'grid', placeItems: 'center' }} aria-busy="true"><img src="/tsg-mark.png" alt="TSG" style={{ width: 72, opacity: 0.9 }} /></div>;
   if (!user) return <>
-    <Login onLogin={login} onGoogleLogin={loginWithGoogle} onLoginError={message => showLoginNotice('error', message)} onClearLoginNotice={() => setLoginNotice(null)} />
+    <Login onLogin={login} onGoogleLogin={loginWithGoogle} onLoginError={showLoginNotice} onClearLoginNotice={() => setLoginNotice(null)} notice={loginNotice} />
     <LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} />
     <AskHost />
   </>;
@@ -220,8 +229,11 @@ export default function App() {
         <footer className="page-footer"><span>© 2026 TSG Power Engineering</span><span>Secure operations <ShieldCheck size={13} /></span></footer>
       </div>
     </main>
-    <LoginNotice notice={loginNotice} onClose={() => setLoginNotice(null)} />
     <AskHost />
-    {toast && <div className="toast"><Check size={16} />{toast}</div>}
+    {toast && <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'} aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}>
+      <span className="toast-icon">{toast.tone === 'error' ? <AlertCircle size={17} /> : toast.tone === 'info' ? <Info size={17} /> : <Check size={17} />}</span>
+      <span className="toast-text"><b>{toast.tone === 'error' ? 'Something needs attention' : toast.tone === 'info' ? 'Note' : 'Done'}</b><span>{toast.message}</span></span>
+      <button type="button" className="toast-close" aria-label="Dismiss" onClick={() => setToast(null)}><X size={15} /></button>
+    </div>}
   </div>;
 }

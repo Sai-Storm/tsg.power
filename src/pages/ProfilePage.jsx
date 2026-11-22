@@ -66,7 +66,7 @@ export default function ProfilePage({ user, notify }) {
       setPasswordConfirm('');
       notify('Profile updated.');
     } catch (error) {
-      notify(error.message);
+      notify(error.message, 'error');
     } finally {
       setBusy(false);
     }

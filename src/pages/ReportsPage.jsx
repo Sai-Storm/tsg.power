@@ -64,23 +64,23 @@ const reportCatalog = [
   {
     id: 'income-expense',
     title: 'Income and Expense',
-    description: 'Cash movements and expenses by period and category.',
+    description: 'Company expenses and cash movements by period and category.',
     icon: Activity,
     source: 'cash-claims',
   },
   {
     id: 'advance-outstanding',
     title: 'Advance Outstanding',
-    description: 'Issued advances, claims and remaining balances.',
+    description: 'Advances by staff member: amount, spent, to return and to reimburse.',
     icon: CircleHelp,
-    source: 'my-advances',
+    source: 'advances',
   },
   {
     id: 'expense-claims',
     title: 'Expense Claim Register',
-    description: 'Employee claims, job links and approval status.',
+    description: 'Staff expense claims: claimed, approved and still to pay.',
     icon: ReceiptTextIcon,
-    source: 'my-expense-claims',
+    source: 'staff-claims',
   },
   {
     id: 'inventory-stock',
@@ -176,7 +176,7 @@ export default function ReportsPage({ notify }) {
     try {
       await exportModule(`reports/${selected.id}`, format, activeFilters);
     } catch (error) {
-      notify(error.message);
+      notify(error.message, 'error');
     }
   };
   return (

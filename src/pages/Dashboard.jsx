@@ -22,7 +22,7 @@ const ADMIN_ACTIONS = [
   ['Invoice & income', ReceiptText, '/income'],
   ['Team schedule', ClipboardCheck, '/schedule'],
   ['Manage staff', UsersRound, '/staff'],
-  ['Review claims', ReceiptText, '/cash-claims'],
+  ['Review claims', ReceiptText, '/staff-claims'],
 ];
 const STAFF_ACTIONS = [
   ['My job orders', BriefcaseBusiness, '/jobs'],
@@ -120,7 +120,7 @@ export default function Dashboard({ user }) {
           </div>
           <div className="pending-links">
             {!isAdmin && <Link to="/quotations"><FileText size={17} /><span>Quotations</span><b>{metric(['pendingQuotations', 'pending_quotations']) ?? '—'}</b><ArrowRight size={14} /></Link>}
-            {isAdmin && <Link to="/cash-claims"><ReceiptText size={17} /><span>Expense claims</span><b>{metric(['pendingExpenseClaims', 'pending_expense_claims']) ?? '—'}</b><ArrowRight size={14} /></Link>}
+            {isAdmin && <Link to="/staff-claims"><ReceiptText size={17} /><span>Expense claims</span><b>{metric(['pendingExpenseClaims', 'pending_expense_claims']) ?? '—'}</b><ArrowRight size={14} /></Link>}
             <Link to="/material-requests"><PackageCheck size={17} /><span>Material requests</span><b>{metric(['pendingMaterialRequests', 'pending_material_requests']) ?? '—'}</b><ArrowRight size={14} /></Link>
           </div>
         </section>

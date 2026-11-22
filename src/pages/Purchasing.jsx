@@ -30,7 +30,7 @@ export default function Purchasing({ notify }) {
   const act = async (key, task, message) => {
     setBusy(key);
     try { await task(); await refresh(); notify?.(message); }
-    catch (error) { notify?.(error.message); }
+    catch (error) { notify?.(error.message, 'error'); }
     finally { setBusy(''); }
   };
 
@@ -40,7 +40,7 @@ export default function Purchasing({ notify }) {
     });
     if (!answer) return;
     const quantity = Number(String(answer).replace(/[^0-9.]/g, ''));
-    if (!(quantity > 0)) { notify?.('Enter a quantity greater than zero.'); return; }
+    if (!(quantity > 0)) { notify?.('Enter a quantity greater than zero.', 'error'); return; }
     act(item.id, () => apiRequest('/purchase-requests', { method: 'POST', body: JSON.stringify({ item_id: item.id, quantity }) }), `Purchase request created for ${item.name}.`);
   };
 

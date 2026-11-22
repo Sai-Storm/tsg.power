@@ -47,7 +47,7 @@ export default function SalaryPaymentDialog({ dialog, onClose, onConfirm }) {
             />
           </label>
           <p className="wide-field">
-            Confirming payment marks this salary paid and automatically generates a salary voucher in Expense & claims.
+            Confirming payment marks this salary paid and automatically generates a salary voucher in Expenses & cash.
           </p>
         </div>
         <div className="modal-footer">

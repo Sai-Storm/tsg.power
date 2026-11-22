@@ -34,7 +34,7 @@ export function moneyText(value, isMoney = true) {
 }
 
 export function formatDelta(delta) {
-  if (delta == null) return 'Change unavailable';
+  if (delta == null) return '';
   if (typeof delta === 'object') {
     const change = delta.percent ?? delta.changePercent ?? delta.value;
     const direction = Number(change) < 0 ? 'down' : 'up';

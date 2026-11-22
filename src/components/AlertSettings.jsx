@@ -21,7 +21,7 @@ export default function AlertSettings({ notify }) {
       await apiRequest('/alerts/preferences', { method: 'PUT', body: JSON.stringify({ email_alerts: email, telegram_chat_id: chat }) });
       await query.refetch();
       notify?.('Alert settings saved.');
-    } catch (error) { notify?.(error.message); }
+    } catch (error) { notify?.(error.message, 'error'); }
     finally { setBusy(false); }
   };
 

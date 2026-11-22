@@ -106,7 +106,7 @@ export default function AdvanceExpensesDialog({ row, readOnly, isAdmin, isFinanc
       await saveOfflineDraft(advanceId, fields, form.newFiles);
       setForm({ ...emptyForm(), date: form.date, category: form.category });
       setError('');
-      notify?.('No connection. The expense is saved on this device and will upload automatically.');
+      notify?.('No connection. The expense is saved on this device and will upload automatically.', 'info');
     };
     // New expenses can be saved without a connection; edits need one.
     if (!form.id && typeof navigator !== 'undefined' && navigator.onLine === false) { await keepOnDevice(); return; }

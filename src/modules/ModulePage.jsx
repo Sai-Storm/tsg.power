@@ -26,13 +26,31 @@ const PAGE_SIZE = 10;
 
 const SUCCESS = {
   'reset-password': 'Password reset.', 'account-photo': 'Profile picture updated.', 'my-account': 'Your account has been updated.',
-  'staff-profile': 'Staff profile updated.', 'salary-payment': 'Salary marked as paid. Voucher generated in Expense & claims.',
+  'staff-profile': 'Staff profile updated.', 'salary-payment': 'Salary marked as paid. Voucher generated in Expenses & cash.',
   payment: 'Payment recorded.', 'advance-issue': 'Money released. The staff member can now record expenses.',
   'service-report': 'Completion report submitted for manager review.', 'assign-job': 'Job assignment saved.', 'job-invoice': 'Invoice generated.',
   'job-close': 'Job closed.', 'job-cancel': 'Job cancelled with reason recorded.', 'job-note': 'Job note saved.',
 };
 
 /** Routes /<module> to its list page, respecting role access. */
+// Status choices a person may actually set; the database refuses the rest.
+// Invoice payment states come from recorded payments, and only a manager
+// reviews service reports. The record's current status is always kept.
+const STATUS_CHOICES = {
+  invoices: () => ['Draft', 'Issued', 'Cancelled', 'Void'],
+  'service-reports': admin => (admin ? null : ['Draft', 'Submitted']),
+};
+function limitStatusChoices(dialog, isAdmin) {
+  const allowed = STATUS_CHOICES[dialog?.module]?.(isAdmin);
+  if (!allowed || !Array.isArray(dialog.fields)) return dialog;
+  const current = dialog.row?._record?.status;
+  // Updated in place: the form writes its values onto this same dialog object.
+  dialog.fields = dialog.fields.map(field => (field.key === 'status' && field.type === 'select'
+    ? { ...field, options: field.options.filter(option => allowed.includes(option) || option === current) }
+    : field));
+  return dialog;
+}
+
 export default function ModuleRoute({ user, notify }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -107,8 +125,8 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
   };
 
   const onExport = async format => {
-    if (format !== 'pdf' && !manages) { notify('Excel export is available to admin and finance only.'); return; }
-    try { await exportModule(apiEndpoint(slug), format, activeFilters); } catch (e) { notify(e.message); }
+    if (format !== 'pdf' && !manages) { notify('Excel export is available to admin and finance only.', 'info'); return; }
+    try { await exportModule(apiEndpoint(slug), format, activeFilters); } catch (e) { notify(e.message, 'error'); }
   };
 
   const create = (requestedForm = slug) => {
@@ -116,7 +134,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
     const form = requestedForm === 'my-advances' ? 'my-advance' : requestedForm === 'advances' ? 'new-advance' : typeof requestedForm === 'string' ? requestedForm : slug;
     const accountMode = form === 'accounts';
     const apiResource = ({ 'cash-claims': 'expenses', 'new-advance': 'advances', 'my-advance': 'advances', 'cash-entry': 'cash-entries' })[form] || apiEndpoint(form);
-    const title = ({ 'cash-claims': 'Create expense voucher', 'new-advance': 'Issue staff advance', 'my-advance': 'Request staff advance', 'cash-entry': 'Record cash movement' })[form] || `Create ${info.title.replace(/s$/, '').toLowerCase()}`;
+    const title = ({ 'cash-claims': 'Record company expense', 'new-advance': 'Issue staff advance', 'my-advance': 'Request staff advance', 'cash-entry': 'Record cash movement' })[form] || `Create ${info.title.replace(/s$/, '').toLowerCase()}`;
     setDialog({ type: 'create', accountMode, fields: accountMode ? null : formSchemas[form], apiResource, title, module: form });
   };
   useEffect(() => { if (initialCreateForm && canCreate) { create(initialCreateForm); onCreateHandled?.(); } }, [initialCreateForm, canCreate, slug]);
@@ -125,10 +143,8 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
     if (slug === 'settings') return setDialog({ type: 'edit', row, fields: [{ key: 'current_value', label: 'Current value', type: 'text', required: true }], apiResource: 'settings', module: 'settings', title: `Edit ${row[0]}` });
     if (slug === 'advances') return setDialog({ type: 'edit', row, fields: formSchemas['new-advance'], apiResource: 'advances', module: 'new-advance', title: `Edit ${row[0]}` });
     if (slug === 'cash-claims') {
-      const kind = String(row?.[1] || '');
-      const advance = /^staff advance/i.test(kind);
-      const cash = /^cash/i.test(kind);
-      return setDialog({ type: 'edit', row, fields: advance ? formSchemas['new-advance'] : cash ? formSchemas['cash-entry'] : formSchemas['cash-claims'], apiResource: advance ? 'advances' : cash ? 'cash-entries' : 'expenses', module: slug, title: `Edit ${advance ? 'advance' : cash ? 'cash entry' : 'expense claim'}` });
+      const cash = /^cash/i.test(String(row?.[1] || ''));
+      return setDialog({ type: 'edit', row, fields: cash ? formSchemas['cash-entry'] : formSchemas['cash-claims'], apiResource: cash ? 'cash-entries' : 'expenses', module: slug, title: `Edit ${cash ? 'cash entry' : 'expense'}` });
     }
     return setDialog({ type: 'edit', row, fields: formSchemas[slug], apiResource: apiEndpoint(slug), module: slug, title: `Edit ${info.title.replace(/s$/, '').toLowerCase()}` });
   };
@@ -139,7 +155,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
       await apiRequest('/notifications?all=true', { method: 'DELETE' });
       await queryClient.invalidateQueries({ queryKey: ['module', 'notifications'] });
       notify('All notifications deleted.');
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(error.message, 'error'); }
   };
 
   // Saves whatever the open dialog collected.
@@ -225,7 +241,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
           : dialog.module === 'my-advance' ? 'Advance request submitted for approval.' : dialog.type === 'create' ? 'Record created.' : 'Changes saved.'));
       setDialog(null);
       setTypedConfirm('');
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(error.message, 'error'); }
   };
 
   // Runs a row action from the "…" menu.
@@ -244,7 +260,7 @@ function ModulePage({ info, slug, user, notify, initialCreateForm = null, onCrea
             profile = lookupRecords('users', list).find(item => (email && String(item.email || '').trim().toLowerCase() === email) || (name && String(item.user || item.name || '').trim().toLowerCase() === name)) || null;
           }
           setDialog({ type: 'staff-profile', row, profile });
-        } catch (error) { notify(error.message); }
+        } catch (error) { notify(error.message, 'error'); }
         return;
       }
       case 'reset-password': return open('reset-password');
@@ -279,7 +295,7 @@ The customer, machine and site are filled in. Assign the team in Job orders.`, {
             job_date: new Date().toISOString().slice(0, 10), description: `Routine service${due}.`,
           }) });
           notify(`Job order ${job?.number || ''} created as a draft. Assign it in Job orders.`.replace('  ', ' '));
-        } catch (error) { notify(error.message); }
+        } catch (error) { notify(error.message, 'error'); }
         return;
       }
       case 'set-role':
@@ -290,7 +306,7 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
           await apiRequest(`/users/${recordId}`, { method: 'PUT', body: JSON.stringify({ role: details.role }) });
           await refresh();
           notify(`${row[0]} is now ${details.role}.`);
-        } catch (error) { notify(error.message); }
+        } catch (error) { notify(error.message, 'error'); }
         return;
       case 'delete-notification':
         if (!await confirmDialog('Delete this notification permanently?', { title: 'Delete notification', confirmLabel: 'Delete', tone: 'danger' })) return;
@@ -298,26 +314,26 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
           await apiRequest(`/notifications/${recordId}`, { method: 'DELETE' });
           await queryClient.invalidateQueries({ queryKey: ['module', 'notifications'] });
           notify('Notification deleted.');
-        } catch (error) { notify(error.message); }
+        } catch (error) { notify(error.message, 'error'); }
         return;
       default: break;
     }
 
     try {
-      const apiModule = slug === 'my-expense-claims' || slug === 'cash-claims' ? 'expenses' : slug;
+      const apiModule = slug === 'cash-claims' ? 'expenses' : slug;
       const type = String(row[1] || '');
       if (slug === 'recycle-bin' && action === 'restore') await apiRequest(`/recycle-bin/${recordId}/restore`, { method: 'POST' });
       else if (slug === 'notifications' && action === 'mark-read') await apiRequest(`/notifications/${recordId}`, { method: 'PUT', body: JSON.stringify({ is_read: true }) });
       else if (slug === 'accounts' && ['activate', 'deactivate'].includes(action)) await apiRequest(`/users/${recordId}`, { method: 'PUT', body: JSON.stringify({ is_active: action === 'activate' }) });
       else if (slug === 'jobs') await apiRequest(`/${apiModule}/${recordId}/status`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
-      else if ((slug === 'advances' || (slug === 'cash-claims' && /^staff advance/i.test(type))) && ['approve', 'reject'].includes(action)) await apiRequest(`/advances/${recordId}/${action}`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
+      else if (slug === 'advances' && ['approve', 'reject'].includes(action)) await apiRequest(`/advances/${recordId}/${action}`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
       else if (slug === 'cash-claims' && /^cash/i.test(type) && ['approve', 'reject', 'post'].includes(action)) await apiRequest(`/cash-entries/${recordId}/${action}`, { method: 'POST', body: JSON.stringify({ status: nextStatus }) });
       else if (slug === 'quotations' && action === 'convert-to-job') await apiRequest(`/${apiModule}/${recordId}/convert-to-job`, { method: 'POST' });
       else if (apiModule === 'expenses') await apiRequest(`/${apiModule}/${recordId}/${action}`, { method: 'POST' });
       else await apiRequest(`/${apiModule}/${recordId}`, { method: 'PUT', body: JSON.stringify({ status: nextStatus }) });
       await refresh();
       notify(action === 'restore' ? 'Record restored to its module.' : `${info.title.slice(0, -1)} ${action}.`);
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(error.message, 'error'); }
   };
 
   const statusValues = [...new Set(rows.flatMap(row => row.filter(cellValue => isStatus(cellValue))))];
@@ -359,7 +375,7 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
     if (dialog.type === 'advance-issue') return <AdvanceIssueDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'salary-payment') return <SalaryPaymentDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
     if (dialog.type === 'stock-movement') return <StockMovementDialog key={key} dialog={dialog} onClose={closeDialog} onConfirm={confirmWith} />;
-    return <RecordDialog key={key} dialog={dialog} columns={info.columns} typedConfirm={typedConfirm} setTypedConfirm={setTypedConfirm} onClose={closeDialog} onConfirm={confirmAction} />;
+    return <RecordDialog key={key} dialog={limitStatusChoices(dialog, isAdmin)} columns={info.columns} typedConfirm={typedConfirm} setTypedConfirm={setTypedConfirm} onClose={closeDialog} onConfirm={confirmAction} />;
   };
 
   return <>
@@ -371,7 +387,6 @@ ${{ Admin: 'Admins can approve, release, settle and manage everything.', Finance
       {canCreate && <button className="primary-button" onClick={() => create()}><Plus size={16} />{createLabel}</button>}
       {canCreate && slug === 'cash-claims' && <>
         <button className="secondary-button" onClick={() => create('cash-entry')}><Plus size={15} />Cash movement</button>
-        <button className="secondary-button" onClick={() => create('new-advance')}><Plus size={15} />New advance request</button>
       </>}
     </div>
 

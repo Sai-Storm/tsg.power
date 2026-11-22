@@ -176,3 +176,30 @@ reset role;
 -- Cash board: opening a claim is not cash out.
 select tests.ok('claims are not listed as staff advances in the cash movements',
   not exists (select 1 from public.cash_movements(null, null) m join public.advances a on a.number = m.reference where a.kind = 'Claim'));
+
+-- Expenses & cash: company book only, no staff advances or advance/claim lines.
+select tests.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select tests.ok('expense book does not repeat staff advances or claims',
+  not exists (select 1 from public.v_expenses v join public.advances a on a.id = v.id));
+select tests.ok('expense book does not list lines recorded inside an advance or claim',
+  not exists (select 1 from public.v_expenses where advance_id is not null));
+reset role;
+
+-- Dashboard: a claim waiting for the manager counts once, not once per line.
+select tests.login('00000000-0000-0000-0000-0000000000b1');
+select (public.open_expense_claim('{"purpose":"Two taxis"}'::jsonb)->>'id') as count_claim \gset
+select public.save_advance_draft(:'count_claim', jsonb_build_object('description', 'Taxi 1', 'amount', 3000, 'date', current_date, 'receipt_file', 't1.pdf'));
+select public.save_advance_draft(:'count_claim', jsonb_build_object('description', 'Taxi 2', 'amount', 4000, 'date', current_date, 'receipt_file', 't2.pdf'));
+select public.submit_advance_settlement(:'count_claim', null);
+select tests.login('00000000-0000-0000-0000-0000000000a1');
+select tests.eq('dashboard expense claims = stand-alone claims + staff claims under review',
+  (public.dashboard_summary()->'counts'->>'pendingExpenseClaims')::int,
+  ((select count(*) from public.expenses where deleted_at is null and advance_id is null and lower(status) = 'submitted')
+   + (select count(*) from public.advances where deleted_at is null and kind = 'Claim' and lower(status) = 'under review'))::int);
+select tests.eq('pending approvals count each settlement under review once',
+  (public.dashboard_summary()->'counts'->>'pendingApprovals')::int,
+  ((select count(*) from public.expenses where deleted_at is null and advance_id is null and lower(status) = 'submitted')
+   + (select count(*) from public.material_requests where deleted_at is null and lower(status) in ('pending','pending approval'))
+   + (select count(*) from public.advances where deleted_at is null and lower(status) in ('pending approval','approved'))
+   + (select count(*) from public.advances where deleted_at is null and lower(status) = 'under review'))::int);

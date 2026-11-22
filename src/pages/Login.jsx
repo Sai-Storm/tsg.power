@@ -1,22 +1,54 @@
-import { useEffect, useState } from 'react';
-import { ArrowRight, Check, Download, ShieldCheck, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, ArrowRight, Download, Eye, EyeOff, KeyRound, ShieldCheck, WifiOff, X } from 'lucide-react';
+
+// Server messages -> words people understand, with what to do next.
+export function describeLoginError(message = '') {
+  const text = String(message);
+  if (/invalid login credentials|invalid_credentials|invalid grant/i.test(text)) {
+    return { kind: 'credentials', title: 'Wrong email or password', message: 'Check both and try again. If you forgot your password, ask your administrator to reset it.' };
+  }
+  if (/deactivated|inactive|banned/i.test(text)) {
+    return { kind: 'account', title: 'Account switched off', message: 'This account has been deactivated. Contact your administrator to turn it back on.' };
+  }
+  if (/email not confirmed/i.test(text)) {
+    return { kind: 'account', title: 'Email not confirmed', message: 'Open the confirmation email we sent you, then sign in again.' };
+  }
+  if (/failed to fetch|networkerror|load failed|network request failed|offline/i.test(text)) {
+    return { kind: 'network', title: 'No connection', message: 'We could not reach the server. Check your internet connection and try again.' };
+  }
+  if (/rate limit|too many|over_request/i.test(text)) {
+    return { kind: 'wait', title: 'Too many attempts', message: 'For your security, please wait a minute before trying again.' };
+  }
+  if (/not configured/i.test(text)) {
+    return { kind: 'setup', title: 'App not set up', message: text };
+  }
+  if (/google/i.test(text)) {
+    return { kind: 'google', title: 'Google sign-in did not finish', message: text };
+  }
+  return { kind: 'other', title: 'Could not sign you in', message: text || 'Something went wrong. Please try again.' };
+}
+
+const NOTICE_MS = 7000;
 
 export function LoginNotice({ notice, onClose }) {
   if (!notice) return null;
-  const success = notice.type === 'success';
+  const info = describeLoginError(notice.message);
+  const Icon = info.kind === 'network' ? WifiOff : info.kind === 'credentials' ? KeyRound : AlertTriangle;
   return (
-    <div className={`login-alert ${success ? 'is-success' : ''}`} role={success ? 'status' : 'alert'} aria-live="polite">
-      <span className="login-alert-icon">{success ? <Check size={14} /> : '!'}</span>
-      <div className="login-alert-copy">
-        <b>{success ? 'Login successful' : 'Login failed'}</b>
-        <span>{notice.message}</span>
+    <div className="login-notice-layer">
+      <div key={notice.id} className={`login-notice is-${info.kind}`} role="alert" aria-live="assertive">
+        <span className="login-notice-icon"><Icon size={18} /></span>
+        <div className="login-notice-copy">
+          <b>{info.title}</b>
+          <span>{info.message}</span>
+        </div>
+        <button type="button" className="login-notice-close" aria-label="Dismiss message" onClick={onClose}><X size={16} /></button>
+        <span className="login-notice-timer" style={{ animationDuration: `${NOTICE_MS}ms` }} aria-hidden="true" />
       </div>
-      <button type="button" aria-label="Dismiss message" onClick={onClose}>
-        <X size={16} />
-      </button>
     </div>
   );
 }
+LoginNotice.duration = NOTICE_MS;
 
 function useInstallPrompt() {
   const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -52,10 +84,15 @@ function useInstallPrompt() {
   return { canInstall: available, installed, install };
 }
 
-export default function Login({ onLogin, onGoogleLogin, onLoginError, onClearLoginNotice }) {
+export default function Login({ onLogin, onGoogleLogin, onLoginError, onClearLoginNotice, notice }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
+  const [failed, setFailed] = useState(0);
   const [busy, setBusy] = useState(false);
+  const passwordRef = useRef(null);
+  const wrongCredentials = Boolean(notice) && describeLoginError(notice.message).kind === 'credentials';
   const [googleBusy, setGoogleBusy] = useState(false);
   const { canInstall, installed, install } = useInstallPrompt();
   const [installMessage, setInstallMessage] = useState('');
@@ -64,11 +101,14 @@ export default function Login({ onLogin, onGoogleLogin, onLoginError, onClearLog
     setBusy(true);
     onClearLoginNotice();
     try {
-      await onLogin({ email, password });
+      await onLogin({ email: email.trim(), password });
+      // Success: the app opens the dashboard straight away, no message.
     } catch (err) {
       onLoginError(err.message || 'Could not sign in. Check your details and try again.');
-    } finally {
+      setFailed(count => count + 1);
+      setPassword('');
       setBusy(false);
+      window.setTimeout(() => passwordRef.current?.focus(), 60);
     }
   };
   const google = async () => {
@@ -118,7 +158,7 @@ export default function Login({ onLogin, onGoogleLogin, onLoginError, onClearLog
           <div className="eyebrow">WELCOME BACK</div>
           <h2>Sign in</h2>
           <p className="login-subtitle">Use your account to continue.</p>
-          <form onSubmit={submit}>
+          <form onSubmit={submit} key={failed} className={failed ? 'login-form-shake' : undefined}>
             <label>
               Email
               <input
@@ -130,20 +170,31 @@ export default function Login({ onLogin, onGoogleLogin, onLoginError, onClearLog
                 placeholder="Enter your email"
               />
             </label>
-            <label>
-              Password
-              <input
-                type="password"
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Enter password"
-              />
-            </label>
-            <button className="primary-button login-submit" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
-              <ArrowRight size={16} />
+            <div className="login-field">
+              <label htmlFor="login-password">Password</label>
+              <span className={`password-field${wrongCredentials ? ' is-invalid' : ''}`}>
+                <input
+                  ref={passwordRef}
+                  id="login-password"
+                  aria-describedby={capsLock ? 'login-caps' : undefined}
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  aria-invalid={wrongCredentials || undefined}
+                  onChange={e => { setPassword(e.target.value); if (notice) onClearLoginNotice(); }}
+                  onKeyUp={e => setCapsLock(Boolean(e.getModifierState?.('CapsLock')))}
+                  onBlur={() => setCapsLock(false)}
+                  placeholder="Enter password"
+                />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide characters' : 'Show characters'} aria-pressed={showPassword} title={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </span>
+              {capsLock && <small id="login-caps" className="login-hint"><AlertTriangle size={13} />Caps Lock is on</small>}
+            </div>
+            <button className="primary-button login-submit" disabled={busy} aria-busy={busy}>
+              {busy ? <><span className="login-spinner" aria-hidden="true" />Signing in…</> : <>Sign in<ArrowRight size={16} /></>}
             </button>
           </form>
           <div className="login-divider">

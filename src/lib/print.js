@@ -9,7 +9,7 @@ const documentLabels = {
   customers: 'customer report',
   jobs: 'job order',
   'service-reports': 'service report',
-  'my-expense-claims': 'expense voucher',
+  'cash-claims': 'expense voucher',
   salary: 'salary slip',
 };
 export function documentLabel(module) {
@@ -17,7 +17,8 @@ export function documentLabel(module) {
 }
 export function canPrintDocument(module, row) {
   return (
-    ['invoices', 'income', 'quotations', 'customers', 'jobs', 'service-reports', 'my-expense-claims'].includes(module) ||
+    ['invoices', 'income', 'quotations', 'customers', 'jobs', 'service-reports'].includes(module) ||
+    (module === 'cash-claims' && !/^cash/i.test(String(row?.[1] || ''))) ||
     (module === 'salary' && /^paid$/i.test(String(row?.[5] || '')))
   );
 }
@@ -381,7 +382,7 @@ ${pdf.COMPANY.signatory.title}`,
       longText('Notes', text('notes')) +
       '<div class="spacer"></div>' +
       pdf.signatures('Prepared by', 'Received by');
-  } else if (module === 'my-expense-claims' || module === 'cash-claims') {
+  } else if (module === 'cash-claims') {
     title = 'EXPENSE VOUCHER';
     const total = num(get('amount') || row?.[4]);
     const jobNo = text('job_number', 'job_order') || (row?.[2] && row[2] !== '—' ? row[2] : '');

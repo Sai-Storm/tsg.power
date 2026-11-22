@@ -32,20 +32,20 @@ export default function Receivables({ notify }) {
   const maxBand = Math.max(1, ...bands.map(b => b.amount));
 
   const remind = async customer => {
-    if (!customer.email) { notify?.(`${customer.customer} has no email address. Add one on the customer record, or print the statement.`); return; }
+    if (!customer.email) { notify?.(`${customer.customer} has no email address. Add one on the customer record, or print the statement.`, 'info'); return; }
     if (!await confirmDialog(`Email a payment reminder to ${customer.customer} (${customer.email})?\n\n${(customer.invoices || []).length} open invoice${customer.invoices?.length === 1 ? '' : 's'} · ${money(customer.outstanding)}`, { title: 'Send reminder', confirmLabel: 'Send reminder' })) return;
     setBusy(customer.customer_id);
     try {
       await apiRequest(`/customers/${customer.customer_id}/remind`, { method: 'POST' });
       notify?.(`Reminder queued for ${customer.email}. It is sent when email alerts are set up (see README).`);
-    } catch (error) { notify?.(error.message); }
+    } catch (error) { notify?.(error.message, 'error'); }
     finally { setBusy(''); }
   };
 
   const statement = async customer => {
     setBusy(customer.customer_id);
     try { printStatement(await apiRequest(`/customer-statement/${customer.customer_id}`)); }
-    catch (error) { notify?.(error.message); }
+    catch (error) { notify?.(error.message, 'error'); }
     finally { setBusy(''); }
   };
 
